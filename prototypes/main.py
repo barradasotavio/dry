@@ -1,4 +1,4 @@
-import dry
+from dry import Webview
 from pathlib import Path
 
 HTML_PATH = Path(__file__).parent / "main.html"
@@ -16,12 +16,8 @@ api = {
 }
 
 if __name__ == "__main__":
-    dry.run(
-        title="Webview Example",
-        min_width=1152,
-        min_height=720,
-        width=1280,
-        height=800,
-        html=HTML,
-        api=api,
-    )
+    wv = Webview()
+    wv.title = "Hello World"
+    wv.content = HTML
+    wv.api = api
+    wv.run()

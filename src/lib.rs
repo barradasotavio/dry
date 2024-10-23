@@ -95,43 +95,14 @@ fn build_ipc_handler(
     }
 }
 
-const JAVASCRIPT: &str = r#"
-if (!window.api) {
-        window.api = new Proxy({}, {
-        get: function(target, name) {
-            return function() {
-                return new Promise((resolve, reject) => {
-                    const callId = Math.random().toString(36).substr(2, 9);
-                    const args = Array.from(arguments).join(',');
-                    const message = `${callId}:${name},${args}`;
-                    window.ipcCallbacks = window.ipcCallbacks || {};
-                    window.ipcCallbacks[callId] = { resolve, reject };
-                    window.ipc.postMessage(message);
-                });
-            };
-        }
-    });
-    window.ipcCallback = function(response) {
-                const { callId, result, error } = JSON.parse(response);
-        if (window.ipcCallbacks && window.ipcCallbacks[callId]) {
-            if (error) {
-                window.ipcCallbacks[callId].reject(new Error(error));
-            } else {
-                window.ipcCallbacks[callId].resolve(result);
-            }
-            delete window.ipcCallbacks[callId];
-        }
-    };
-}
-"#;
-
 fn build_webview(
     window: &Window,
     ipc_handler: impl Fn(Request<String>) + 'static,
     html: String,
+    initialization_script: &str,
 ) -> WebView {
     let builder: WebViewBuilder<'_> = WebViewBuilder::new()
-        .with_initialization_script(JAVASCRIPT)
+        .with_initialization_script(initialization_script)
         .with_html(html)
         .with_ipc_handler(ipc_handler)
         .with_accept_first_mouse(true);
@@ -192,13 +163,14 @@ fn run(
     height: u32,
     html: String,
     api: HashMap<String, Py<PyFunction>>,
+    initialization_script: &str,
 ) {
     let event_loop: EventLoop<ClientEvent> =
         EventLoopBuilder::<ClientEvent>::with_user_event().build();
     let window: Window = build_window(&event_loop, title, min_width, min_height, width, height);
     let event_loop_proxy = event_loop.create_proxy();
     let ipc_handler = build_ipc_handler(api, event_loop_proxy);
-    let webview: WebView = build_webview(&window, ipc_handler, html);
+    let webview: WebView = build_webview(&window, ipc_handler, html, initialization_script);
     run_event_loop(event_loop, webview);
 }
 

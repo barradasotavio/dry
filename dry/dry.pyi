@@ -1,4 +1,4 @@
-from typing import Callable, Dict
+from typing import Any, Callable
 
 def run(
     title: str,
@@ -7,5 +7,6 @@ def run(
     width: int,
     height: int,
     html: str,
-    api: Dict[str, Callable[..., str]],
+    api: dict[str, Callable[..., Any]],
+    initialization_script: str,
 ) -> None: ...
