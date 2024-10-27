@@ -2,11 +2,15 @@ window.api = new Proxy({}, {
     get: function (target, name) {
         return function () {
             return new Promise((resolve, reject) => {
-                const callId = Math.random().toString(36).slice(2, 11);
-                const args = Array.from(arguments).join(',');
-                const message = `${callId}:${name},${args}`;
+                const call_id = Math.random().toString(36).slice(2, 11);
+                const args = Array.from(arguments);
+                const message = JSON.stringify({
+                    call_id: call_id,
+                    function: name,
+                    arguments: args
+                });
                 window.ipcStore = window.ipcStore || {};
-                window.ipcStore[callId] = { resolve, reject };
+                window.ipcStore[call_id] = { resolve, reject };
                 window.ipc.postMessage(message);
             });
         };
@@ -14,13 +18,13 @@ window.api = new Proxy({}, {
 })
 
 window.ipcCallback = function (response) {
-    const { callId, result, error } = JSON.parse(response);
-    if (window.ipcStore && window.ipcStore[callId]) {
+    const { call_id, result, error } = response;
+    if (window.ipcStore && window.ipcStore[call_id]) {
         if (error) {
-            window.ipcStore[callId].reject(new Error(error));
+            window.ipcStore[call_id].reject(new Error(error));
         } else {
-            window.ipcStore[callId].resolve(result);
+            window.ipcStore[call_id].resolve(result);
         }
-        delete window.ipcStore[callId];
+        delete window.ipcStore[call_id];
     }
 }

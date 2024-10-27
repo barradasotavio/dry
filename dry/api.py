@@ -15,7 +15,7 @@ class Webview:
     _html: str
     _url: str | None
     _api: dict[str, Callable[..., Any]]
-    _initialization_script: str = IPC_PROXY
+    _startup_script: str = IPC_PROXY
 
     def __init__(
             self,
@@ -107,18 +107,18 @@ class Webview:
         self._api = api
     
     @property
-    def initialization_script(self):
+    def startup_script(self):
         '''
         Get the initialization script for the webview window.
         '''
-        return self._initialization_script
+        return self._startup_script
 
-    @initialization_script.setter
-    def initialization_script(self, script: str):
+    @startup_script.setter
+    def startup_script(self, script: str):
         '''
         Set the initialization script for the webview window.
         '''
-        self._initialization_script = script
+        self._startup_script = script
 
     def run(self):
         '''
@@ -126,11 +126,9 @@ class Webview:
         '''
         dry.run(
             title=self.title,
-            min_width=self.min_size[0],
-            min_height=self.min_size[1],
-            width=self.size[0],
-            height=self.size[1],
+            min_size=self.min_size,
+            size=self.size,
             html=self._html,
             api=self._api,
-            initialization_script=self.initialization_script,
+            startup_script=self.startup_script,
         )

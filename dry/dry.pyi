@@ -2,11 +2,9 @@ from typing import Any, Callable
 
 def run(
     title: str,
-    min_width: int,
-    min_height: int,
-    width: int,
-    height: int,
+    min_size: tuple[int, int],
+    size: tuple[int, int],
     html: str,
+    startup_script: str,
     api: dict[str, Callable[..., Any]],
-    initialization_script: str,
 ) -> None: ...
