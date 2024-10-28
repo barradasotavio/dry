@@ -41,6 +41,7 @@ class Webview:
     _title: str
     _min_size: tuple[int, int]
     _size: tuple[int, int]
+    _icon_path: str | None = None
     _html: str | None = None
     _url: str | None = None
     _api: Mapping[str, DryFunction] | None = None
@@ -51,14 +52,39 @@ class Webview:
         title: str = 'My Dry Webview',
         min_size: tuple[int, int] = (1152, 720),
         size: tuple[int, int] = (1280, 800),
-        content: str = '<h1>Hello World</h1>',
+        icon_path: str | None = None,
+        content: str = '<h1>Hello, World!</h1>',
+        api: Mapping[str, DryFunction] | None = None,
         dev_tools: bool = False,
     ):
+        '''
+        Initialize the webview window.
+        
+        :param title: The title of the webview window.
+        :param min_size: The minimum size of the webview window.
+        :param size: The size of the webview window.
+        :param icon_path: The path to the icon of the webview window (only .ico).
+        :param content: The content of the webview window, either an HTML or a URL.
+        :param api: The functions being passed down to the webview window.
+        :param dev_tools: Whether the developer tools are enabled.
+
+        :type title: str
+        :type min_size: tuple[int, int]
+        :type size: tuple[int, int]
+        :type icon_path: str | None
+        :type content: str
+        :type api: Mapping[str, DryFunction] | None
+        :type dev_tools: bool
+
+        :return: Webview
+        '''
         self.title = title
         self.min_size = min_size
         self.size = size
         self.content = content
+        self.api = api
         self.dev_tools = dev_tools
+        self.icon_path = icon_path
 
     @property
     def title(self) -> str:
@@ -125,7 +151,7 @@ class Webview:
         return self._api
 
     @api.setter
-    def api(self, api: Mapping[str, DryFunction]) -> None:
+    def api(self, api: Mapping[str, DryFunction] | None) -> None:
         """
         Set the functions being passed down to the webview window.
         """
@@ -144,6 +170,22 @@ class Webview:
         Set whether the developer tools are enabled.
         """
         self._dev_tools = dev_tools
+    
+    @property
+    def icon_path(self) -> str | None:
+        """
+        Get the path to the icon of the webview window.
+        """
+        return self._icon_path
+    
+    @icon_path.setter
+    def icon_path(self, icon_path: str | None) -> None:
+        """
+        Set the path to the icon of the webview window (only .ico).
+        """
+        if self._icon_path and not self._icon_path.endswith('.ico'):
+            raise ValueError('The icon file must be of type .ico')
+        self._icon_path = icon_path
 
     def run(self):
         """
@@ -153,6 +195,7 @@ class Webview:
             title=self.title,
             min_size=self.min_size,
             size=self.size,
+            icon_path=self.icon_path,
             html=self._html,
             url=self._url,
             api=self.api,

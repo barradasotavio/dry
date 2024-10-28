@@ -1,4 +1,4 @@
-use std::{collections::HashMap, error::Error};
+use std::{collections::HashMap, error::Error, path::Path};
 
 use pyo3::{
     prelude::*,
@@ -11,7 +11,7 @@ use tao::{
     error::OsError,
     event::{Event, StartCause, WindowEvent},
     event_loop::{ControlFlow, EventLoop, EventLoopBuilder, EventLoopProxy},
-    window::{Window, WindowBuilder},
+    window::{Icon, Window, WindowBuilder},
 };
 use wry::{http::Request, Error as WryError, WebView, WebViewBuilder};
 
@@ -24,15 +24,17 @@ fn dry(m: &Bound<'_, PyModule>) -> PyResult<()> {
     title, 
     min_size, 
     size, 
+    icon_path=None,
     html=None, 
     url=None, 
     api=None, 
-    dev_tools=None
+    dev_tools=None,
 ))]
 fn run(
     title: &str,
     min_size: (u32, u32),
     size: (u32, u32),
+    icon_path: Option<&str>,
     html: Option<&str>,
     url: Option<&str>,
     api: Option<HashMap<String, Py<PyFunction>>>,
@@ -40,7 +42,7 @@ fn run(
 ) {
     let event_loop = IEventLoop::new().unwrap();
     let window =
-        build_window(&event_loop.instance, title, min_size, size).unwrap();
+        build_window(&event_loop.instance, title, min_size, size, icon_path).unwrap();
     let ipc_handler =
         api.map(|api| build_ipc_handler(api, event_loop.proxy.clone()));
     let webview =
@@ -104,16 +106,32 @@ fn build_window(
     title: &str,
     min_size: (u32, u32),
     size: (u32, u32),
+    icon_path: Option<&str>,
 ) -> Result<Window, OsError> {
     let min_size = PhysicalSize::new(min_size.0, min_size.1);
     let size = PhysicalSize::new(size.0, size.1);
-    let window = WindowBuilder::new()
+    let mut window_builder = WindowBuilder::new()
         .with_title(title)
         .with_min_inner_size(min_size)
-        .with_inner_size(size)
-        .build(event_loop)?;
-    Ok(window)
+        .with_inner_size(size);
+    if let Some(icon_path) = icon_path {
+        let icon = load_icon(Path::new(icon_path));
+        window_builder = window_builder.with_window_icon(icon);
+    }
+    Ok(window_builder.build(event_loop)?)
 }
+
+fn load_icon(path: &Path) -> Option<Icon> {
+    let (icon_rgba, icon_width, icon_height) = {
+      let image = image::open(path)
+        .expect("Failed to open icon path")
+        .into_rgba8();
+      let (width, height) = image.dimensions();
+      let rgba = image.into_raw();
+      (rgba, width, height)
+    };
+    Icon::from_rgba(icon_rgba, icon_width, icon_height).ok()
+  }
 
 const STARTUP_SCRIPT: &str = r#"
 window.api = new Proxy({}, {

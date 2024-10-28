@@ -4,6 +4,7 @@ from random import randint as random_integer
 
 from dry import DryFunction, Webview
 
+ICON_PATH = Path(__file__).parent / 'icon.ico'
 HTML_PATH = Path(__file__).parent / 'main.html'
 
 with open(HTML_PATH, encoding='utf-8') as f:
@@ -60,6 +61,7 @@ if __name__ == '__main__':
     wv = Webview()
     wv.title = 'Hello World'
     wv.size = wv.min_size = (1080, 720)
+    wv.icon_path = ICON_PATH.as_posix()
     wv.content = HTML
     wv.api = api
     wv.run()
