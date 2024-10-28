@@ -1,6 +1,6 @@
 [package]
-name = "dry"
-version = "0.1.0"
+name = "dry-webview"
+version = "0.1.1"
 edition = "2021"
 
 [lib]

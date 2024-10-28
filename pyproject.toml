@@ -3,8 +3,8 @@ requires = ["maturin>=1.7,<2.0"]
 build-backend = "maturin"
 
 [project]
-name = "dry"
-requires-python = ">=3.8"
+name = "dry-webview"
+requires-python = ">=3.12"
 classifiers = [
     "Programming Language :: Rust",
     "Programming Language :: Python :: Implementation :: CPython",
@@ -16,6 +16,19 @@ dynamic = ["version"]
 features = ["pyo3/extension-module"]
 
 [tool.uv]
-dev-dependencies = [
-    "maturin>=1.7.4",
-]
+dev-dependencies = ["maturin>=1.7.4", "ruff>=0.7.1", "taskipy>=1.13.0"]
+
+[tool.ruff]
+line-length = 79
+
+[tool.ruff.lint]
+extend-select = ["I001"]
+
+[tool.ruff.format]
+quote-style = "single"
+
+[tool.taskipy.tasks]
+pre_format = "uv run ruff check --fix"
+format = "uv run ruff format"
+dev = "uv run maturin develop --uv"
+release = "uv run maturin build --strip --release"

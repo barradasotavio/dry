@@ -26,15 +26,13 @@ fn run(
     min_size: (u32, u32),
     size: (u32, u32),
     html: &str,
-    startup_script: &str,
     api: HashMap<String, Py<PyFunction>>,
 ) {
     let event_loop = IEventLoop::new().unwrap();
     let window =
         build_window(&event_loop.instance, title, min_size, size).unwrap();
     let ipc_handler = build_ipc_handler(api, event_loop.proxy.clone());
-    let webview =
-        build_webview(&window, ipc_handler, startup_script, html).unwrap();
+    let webview = build_webview(&window, ipc_handler, html).unwrap();
     event_loop.run(webview);
 }
 
@@ -68,7 +66,7 @@ impl IEventLoop {
             *control_flow = ControlFlow::Wait;
 
             match event {
-                Event::NewEvents(StartCause::Init) => println!("Started!"),
+                Event::NewEvents(StartCause::Init) => {},
                 Event::WindowEvent {
                     event: WindowEvent::CloseRequested,
                     ..
@@ -79,7 +77,7 @@ impl IEventLoop {
                 Event::UserEvent(UserEvent::EvaluateJavascript(js_code)) => {
                     if let Some(webview) = webview.as_ref() {
                         if let Err(err) = webview.evaluate_script(&js_code) {
-                            eprintln!("Error evaluating script: {:?}", err);
+                            eprintln!("{:?}", err);
                         }
                     }
                 },
@@ -105,16 +103,48 @@ fn build_window(
     Ok(window)
 }
 
+const STARTUP_SCRIPT: &str = r#"
+window.api = new Proxy({}, {
+    get: function (target, name) {
+        return function () {
+            return new Promise((resolve, reject) => {
+                const call_id = Math.random().toString(36).slice(2, 11);
+                const args = Array.from(arguments);
+                const message = JSON.stringify({
+                    call_id: call_id,
+                    function: name,
+                    arguments: args
+                });
+                window.ipcStore = window.ipcStore || {};
+                window.ipcStore[call_id] = { resolve, reject };
+                window.ipc.postMessage(message);
+            });
+        };
+    }
+})
+
+window.ipcCallback = function (response) {
+    const { call_id, result, error } = response;
+    if (window.ipcStore && window.ipcStore[call_id]) {
+        if (error) {
+            window.ipcStore[call_id].reject(new Error(error));
+        } else {
+            window.ipcStore[call_id].resolve(result);
+        }
+        delete window.ipcStore[call_id];
+    }
+}
+"#;
+
 fn build_webview(
     window: &Window,
     ipc_handler: impl Fn(Request<String>) + 'static,
-    startup_script: &str,
     html: &str,
 ) -> Result<WebView, WryError> {
     let builder = WebViewBuilder::new()
-        .with_initialization_script(startup_script)
-        .with_html(html)
+        .with_initialization_script(STARTUP_SCRIPT)
         .with_ipc_handler(ipc_handler)
+        .with_html(html)
         .with_accept_first_mouse(true);
     #[cfg(any(
         target_os = "windows",
@@ -145,19 +175,12 @@ fn build_ipc_handler(
     move |request| {
         let call_request: CallRequest = match from_str(request.body()) {
             Ok(call_request) => call_request,
-            Err(err) => {
-                eprintln!(
-                    "Error parsing request: {:?}. Request body: {}",
-                    err,
-                    request.body()
-                );
-                return;
-            },
+            Err(err) => return eprintln!("{:?}", err),
         };
         let call_response = match call_request.run(&api) {
             Ok(call_response) => call_response,
             Err(err) => {
-                eprintln!("Error executing request: {:?}", err);
+                eprintln!("{:?}", err);
                 CallResponse {
                     call_id: call_request.call_id,
                     result: None,
@@ -166,7 +189,7 @@ fn build_ipc_handler(
             },
         };
         if let Err(err) = call_response.run(&event_loop_proxy) {
-            eprintln!("Error sending response: {:?}", err);
+            eprintln!("{:?}", err);
         }
     }
 }
@@ -231,7 +254,9 @@ impl CallRequest {
         &self,
         api: &HashMap<String, Py<PyFunction>>,
     ) -> Result<CallResponse, Box<dyn Error>> {
-        let py_func = api.get(&self.function).ok_or("Function not found")?;
+        let py_func = api
+            .get(&self.function)
+            .ok_or(format!("Function {} not found.", self.function))?;
         Python::with_gil(|py| {
             let py_args = match &self.arguments {
                 Some(args) => PyTuple::new_bound(py, args),
@@ -261,7 +286,6 @@ impl CallResponse {
         event_loop_proxy: &EventLoopProxy<UserEvent>,
     ) -> Result<(), Box<dyn Error>> {
         let response = format!("window.ipcCallback({})", to_string(self)?);
-        println!("Response: {}", response);
         event_loop_proxy
             .send_event(UserEvent::EvaluateJavascript(response))?;
         Ok(())
