@@ -20,19 +20,21 @@ fn dry(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(run, m)?)
 }
 
-#[pyfunction]
+#[pyfunction(signature=(title, min_size, size, html=None, url=None, api=None))]
 fn run(
     title: &str,
     min_size: (u32, u32),
     size: (u32, u32),
-    html: &str,
-    api: HashMap<String, Py<PyFunction>>,
+    html: Option<&str>,
+    url: Option<&str>,
+    api: Option<HashMap<String, Py<PyFunction>>>,
 ) {
     let event_loop = IEventLoop::new().unwrap();
     let window =
         build_window(&event_loop.instance, title, min_size, size).unwrap();
-    let ipc_handler = build_ipc_handler(api, event_loop.proxy.clone());
-    let webview = build_webview(&window, ipc_handler, html).unwrap();
+    let ipc_handler =
+        api.map(|api| build_ipc_handler(api, event_loop.proxy.clone()));
+    let webview = build_webview(&window, ipc_handler, html, url).unwrap();
     event_loop.run(webview);
 }
 
@@ -138,14 +140,21 @@ window.ipcCallback = function (response) {
 
 fn build_webview(
     window: &Window,
-    ipc_handler: impl Fn(Request<String>) + 'static,
-    html: &str,
+    ipc_handler: Option<impl Fn(Request<String>) + 'static>,
+    html: Option<&str>,
+    url: Option<&str>,
 ) -> Result<WebView, WryError> {
-    let builder = WebViewBuilder::new()
+    let mut builder = WebViewBuilder::new()
         .with_initialization_script(STARTUP_SCRIPT)
-        .with_ipc_handler(ipc_handler)
-        .with_html(html)
         .with_accept_first_mouse(true);
+    if let Some(ipc_handler) = ipc_handler {
+        builder = builder.with_ipc_handler(ipc_handler);
+    }
+    builder = match (html, url) {
+        (Some(html), _) => builder.with_html(html),
+        (None, Some(url)) => builder.with_url(url),
+        (None, None) => panic!("No html or url provided."),
+    };
     #[cfg(any(
         target_os = "windows",
         target_os = "macos",

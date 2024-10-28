@@ -1,8 +1,8 @@
-from pathlib import Path
 from datetime import datetime as dt
+from pathlib import Path
 from random import randint as random_integer
 
-from dry import Webview, DryFunction
+from dry import DryFunction, Webview
 
 HTML_PATH = Path(__file__).parent / 'main.html'
 

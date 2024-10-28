@@ -1,7 +1,9 @@
 from __future__ import annotations
+
 from re import match
+from typing import Callable, Mapping, TypeAlias, Union
+
 from . import dry
-from typing import Callable, Mapping, Union, TypeAlias
 
 DryType: TypeAlias = Union[
     bool,
@@ -39,9 +41,9 @@ class Webview:
     _title: str
     _min_size: tuple[int, int]
     _size: tuple[int, int]
-    _html: str
-    _url: str | None
-    _api: Mapping[str, DryFunction]
+    _html: str | None = '<h1>Hello, World!</h1>'
+    _url: str | None = None
+    _api: Mapping[str, DryFunction] | None = None
 
     def __init__(
         self,
@@ -109,14 +111,8 @@ class Webview:
         """
         Set the content of the webview window, either an HTML or a URL.
         """
-        is_url = match(r'https?://[a-z0-9.-]+', content)
-        if is_url:
-            raise ValueError('Setting url is not supported yet.')
-            self._url = content
-            self._html = None
-        else:
-            self._url = None
-            self._html = content
+        is_url = bool(match(r'https?://[a-z0-9.-]+', content))
+        self._url, self._html = (content, None) if is_url else (None, content)
 
     @property
     def api(self):
@@ -141,5 +137,6 @@ class Webview:
             min_size=self.min_size,
             size=self.size,
             html=self._html,
-            api=self._api,
+            url=self._url,
+            api=self.api,
         )
