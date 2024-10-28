@@ -41,73 +41,76 @@ class Webview:
     _title: str
     _min_size: tuple[int, int]
     _size: tuple[int, int]
-    _html: str | None = '<h1>Hello, World!</h1>'
+    _html: str | None = None
     _url: str | None = None
     _api: Mapping[str, DryFunction] | None = None
+    _dev_tools: bool = False
 
     def __init__(
         self,
-        title: str = 'Webview Window',
+        title: str = 'My Dry Webview',
         min_size: tuple[int, int] = (1152, 720),
         size: tuple[int, int] = (1280, 800),
         content: str = '<h1>Hello World</h1>',
+        dev_tools: bool = False,
     ):
         self.title = title
-        self.min_size = (min_size[0], min_size[1])
+        self.min_size = min_size
         self.size = size
         self.content = content
+        self.dev_tools = dev_tools
 
     @property
-    def title(self):
+    def title(self) -> str:
         """
         Get the title of the webview window.
         """
         return self._title
 
     @title.setter
-    def title(self, title: str):
+    def title(self, title: str) -> None:
         """
         Set the title of the webview window.
         """
         self._title = title
 
     @property
-    def min_size(self):
+    def min_size(self) -> tuple[int, int]:
         """
         Get the minimum size of the webview window.
         """
         return self._min_size
 
     @min_size.setter
-    def min_size(self, width_and_height: tuple[int, int]):
+    def min_size(self, width_and_height: tuple[int, int]) -> None:
         """
         Set the minimum size of the webview window.
         """
         self._min_size = width_and_height
 
     @property
-    def size(self):
+    def size(self) -> tuple[int, int]:
         """
         Get the size of the webview window.
         """
         return self._size
 
     @size.setter
-    def size(self, width_and_height: tuple[int, int]):
+    def size(self, width_and_height: tuple[int, int]) -> None:
         """
         Set the size of the webview window.
         """
         self._size = width_and_height
 
     @property
-    def content(self):
+    def content(self) -> str | None:
         """
         Get the content of the webview window.
         """
         return self._html or self._url
 
     @content.setter
-    def content(self, content: str):
+    def content(self, content: str) -> None:
         """
         Set the content of the webview window, either an HTML or a URL.
         """
@@ -115,7 +118,7 @@ class Webview:
         self._url, self._html = (content, None) if is_url else (None, content)
 
     @property
-    def api(self):
+    def api(self) -> Mapping[str, DryFunction] | None:
         """
         Get the functions being passed down to the webview window.
         """
@@ -128,6 +131,20 @@ class Webview:
         """
         self._api = api
 
+    @property
+    def dev_tools(self) -> bool:
+        """
+        Get whether the developer tools are enabled.
+        """
+        return self._dev_tools
+
+    @dev_tools.setter
+    def dev_tools(self, dev_tools: bool) -> None:
+        """
+        Set whether the developer tools are enabled.
+        """
+        self._dev_tools = dev_tools
+
     def run(self):
         """
         Run the webview window, in a blocking loop.
@@ -139,4 +156,5 @@ class Webview:
             html=self._html,
             url=self._url,
             api=self.api,
+            dev_tools=self.dev_tools,
         )

@@ -38,10 +38,10 @@ Dry is in early stages of development and it has been tested and compiled only f
 - 🟢 Render HTML content
 - 🟢 Load HTTP/HTTPS content
 - 🟢 Call Python functions from JavaScript
-- 🟡 Enable dev mode (dev tools and auto reload)
-- 🔴 Enable JavaScript calls from Python
-- 🔴 Customize the title bar icon
+- 🟢 Enable dev mode (dev tools and auto reload)
+- 🟡 Customize the title bar icon
 - 🔴 Set a custom taskbar icon
+- 🔴 Enable JavaScript calls from Python
 - 🔴 Allow usage of custom titlebar
 - 🔴 Store and manage global state in Python
 - 🔴 Support PyInstaller

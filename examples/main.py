@@ -59,6 +59,7 @@ api: dict[str, DryFunction] = {
 if __name__ == '__main__':
     wv = Webview()
     wv.title = 'Hello World'
+    wv.size = wv.min_size = (1080, 720)
     wv.content = HTML
     wv.api = api
     wv.run()

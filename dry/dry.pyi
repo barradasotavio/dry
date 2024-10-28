@@ -7,4 +7,5 @@ def run(
     html: str | None = None,
     url: str | None = None,
     api: Mapping[str, Callable[..., Any]] | None = None,
+    dev_tools: bool | None = None,
 ) -> None: ...

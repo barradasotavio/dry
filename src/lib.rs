@@ -20,7 +20,15 @@ fn dry(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(run, m)?)
 }
 
-#[pyfunction(signature=(title, min_size, size, html=None, url=None, api=None))]
+#[pyfunction(signature=(
+    title, 
+    min_size, 
+    size, 
+    html=None, 
+    url=None, 
+    api=None, 
+    dev_tools=None
+))]
 fn run(
     title: &str,
     min_size: (u32, u32),
@@ -28,13 +36,15 @@ fn run(
     html: Option<&str>,
     url: Option<&str>,
     api: Option<HashMap<String, Py<PyFunction>>>,
+    dev_tools: Option<bool>,
 ) {
     let event_loop = IEventLoop::new().unwrap();
     let window =
         build_window(&event_loop.instance, title, min_size, size).unwrap();
     let ipc_handler =
         api.map(|api| build_ipc_handler(api, event_loop.proxy.clone()));
-    let webview = build_webview(&window, ipc_handler, html, url).unwrap();
+    let webview =
+        build_webview(&window, ipc_handler, html, url, dev_tools).unwrap();
     event_loop.run(webview);
 }
 
@@ -143,6 +153,7 @@ fn build_webview(
     ipc_handler: Option<impl Fn(Request<String>) + 'static>,
     html: Option<&str>,
     url: Option<&str>,
+    dev_tools: Option<bool>,
 ) -> Result<WebView, WryError> {
     let mut builder = WebViewBuilder::new()
         .with_initialization_script(STARTUP_SCRIPT)
@@ -155,6 +166,9 @@ fn build_webview(
         (None, Some(url)) => builder.with_url(url),
         (None, None) => panic!("No html or url provided."),
     };
+    if let Some(dev_tools) = dev_tools {
+        builder = builder.with_devtools(dev_tools);
+    }
     #[cfg(any(
         target_os = "windows",
         target_os = "macos",
