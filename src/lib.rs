@@ -1,11 +1,9 @@
+mod api;
+mod window;
+
 use std::{collections::HashMap, error::Error, path::Path};
 
-use pyo3::{
-    prelude::*,
-    types::{PyFunction, PyTuple},
-};
-use serde::{Deserialize, Serialize};
-use serde_json::{from_str, to_string};
+use pyo3::{prelude::*, types::PyFunction};
 use tao::{
     dpi::PhysicalSize,
     error::OsError,
@@ -15,25 +13,30 @@ use tao::{
 };
 use wry::{http::Request, Error as WryError, WebView, WebViewBuilder};
 
+use api::{handle_api_requests, API_SCRIPT};
+use window::{handle_window_requests, hit_test, HitTestResult, WINDOW_SCRIPT};
+
 #[pymodule]
 fn dry(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(run, m)?)
 }
 
 #[pyfunction(signature=(
-    title, 
-    min_size, 
-    size, 
+    title,
+    min_size,
+    size,
+    decorations=None,
     icon_path=None,
-    html=None, 
-    url=None, 
-    api=None, 
+    html=None,
+    url=None,
+    api=None,
     dev_tools=None,
 ))]
 fn run(
     title: &str,
     min_size: (u32, u32),
     size: (u32, u32),
+    decorations: Option<bool>,
     icon_path: Option<&str>,
     html: Option<&str>,
     url: Option<&str>,
@@ -41,18 +44,30 @@ fn run(
     dev_tools: Option<bool>,
 ) {
     let event_loop = IEventLoop::new().unwrap();
-    let window =
-        build_window(&event_loop.instance, title, min_size, size, icon_path).unwrap();
-    let ipc_handler =
-        api.map(|api| build_ipc_handler(api, event_loop.proxy.clone()));
+    let window = build_window(
+        &event_loop.instance,
+        title,
+        min_size,
+        size,
+        decorations,
+        icon_path,
+    )
+    .unwrap();
+    let ipc_handler = build_ipc_handler(api, event_loop.proxy.clone());
     let webview =
         build_webview(&window, ipc_handler, html, url, dev_tools).unwrap();
-    event_loop.run(webview);
+    event_loop.run(window, webview);
 }
 
 #[derive(Debug)]
 enum UserEvent {
     EvaluateJavascript(String),
+    Minimize,
+    Maximize,
+    DragWindow,
+    CloseWindow,
+    MouseDown(u32, u32),
+    MouseMove(u32, u32),
 }
 
 struct IEventLoop {
@@ -73,6 +88,7 @@ impl IEventLoop {
 
     fn run(
         self,
+        window: Window,
         webview: WebView,
     ) {
         let mut webview = Some(webview);
@@ -84,16 +100,49 @@ impl IEventLoop {
                 Event::WindowEvent {
                     event: WindowEvent::CloseRequested,
                     ..
-                } => {
+                }
+                | Event::UserEvent(UserEvent::CloseWindow) => {
                     let _ = webview.take();
                     *control_flow = ControlFlow::Exit
                 },
-                Event::UserEvent(UserEvent::EvaluateJavascript(js_code)) => {
-                    if let Some(webview) = webview.as_ref() {
-                        if let Err(err) = webview.evaluate_script(&js_code) {
-                            eprintln!("{:?}", err);
+
+                Event::UserEvent(e) => match e {
+                    UserEvent::EvaluateJavascript(js_code) => {
+                        if let Some(webview) = webview.as_ref() {
+                            if let Err(err) = webview.evaluate_script(&js_code)
+                            {
+                                eprintln!("{:?}", err);
+                            }
                         }
-                    }
+                    },
+                    UserEvent::Minimize => window.set_minimized(true),
+                    UserEvent::Maximize => {
+                        window.set_maximized(!window.is_maximized())
+                    },
+                    UserEvent::DragWindow => window.drag_window().unwrap(),
+                    UserEvent::MouseDown(x, y) => {
+                        let res = hit_test(
+                            window.inner_size(),
+                            x,
+                            y,
+                            window.scale_factor(),
+                        );
+                        match res {
+                            HitTestResult::Client | HitTestResult::NoWhere => {
+                            },
+                            _ => res.drag_resize_window(&window),
+                        }
+                    },
+                    UserEvent::MouseMove(x, y) => {
+                        hit_test(
+                            window.inner_size(),
+                            x,
+                            y,
+                            window.scale_factor(),
+                        )
+                        .change_cursor(&window);
+                    },
+                    UserEvent::CloseWindow => {},
                 },
                 _ => (),
             }
@@ -106,6 +155,7 @@ fn build_window(
     title: &str,
     min_size: (u32, u32),
     size: (u32, u32),
+    decorations: Option<bool>,
     icon_path: Option<&str>,
 ) -> Result<Window, OsError> {
     let min_size = PhysicalSize::new(min_size.0, min_size.1);
@@ -114,6 +164,9 @@ fn build_window(
         .with_title(title)
         .with_min_inner_size(min_size)
         .with_inner_size(size);
+    if let Some(decorations) = decorations {
+        window_builder = window_builder.with_decorations(decorations);
+    }
     if let Some(icon_path) = icon_path {
         let icon = load_icon(Path::new(icon_path));
         window_builder = window_builder.with_window_icon(icon);
@@ -123,62 +176,28 @@ fn build_window(
 
 fn load_icon(path: &Path) -> Option<Icon> {
     let (icon_rgba, icon_width, icon_height) = {
-      let image = image::open(path)
-        .expect("Failed to open icon path")
-        .into_rgba8();
-      let (width, height) = image.dimensions();
-      let rgba = image.into_raw();
-      (rgba, width, height)
+        let image = image::open(path)
+            .expect("Failed to open icon path")
+            .into_rgba8();
+        let (width, height) = image.dimensions();
+        let rgba = image.into_raw();
+        (rgba, width, height)
     };
     Icon::from_rgba(icon_rgba, icon_width, icon_height).ok()
-  }
-
-const STARTUP_SCRIPT: &str = r#"
-window.api = new Proxy({}, {
-    get: function (target, name) {
-        return function () {
-            return new Promise((resolve, reject) => {
-                const call_id = Math.random().toString(36).slice(2, 11);
-                const args = Array.from(arguments);
-                const message = JSON.stringify({
-                    call_id: call_id,
-                    function: name,
-                    arguments: args
-                });
-                window.ipcStore = window.ipcStore || {};
-                window.ipcStore[call_id] = { resolve, reject };
-                window.ipc.postMessage(message);
-            });
-        };
-    }
-})
-
-window.ipcCallback = function (response) {
-    const { call_id, result, error } = response;
-    if (window.ipcStore && window.ipcStore[call_id]) {
-        if (error) {
-            window.ipcStore[call_id].reject(new Error(error));
-        } else {
-            window.ipcStore[call_id].resolve(result);
-        }
-        delete window.ipcStore[call_id];
-    }
 }
-"#;
 
 fn build_webview(
     window: &Window,
-    ipc_handler: Option<impl Fn(Request<String>) + 'static>,
+    ipc_handler: impl Fn(Request<String>) + 'static,
     html: Option<&str>,
     url: Option<&str>,
     dev_tools: Option<bool>,
 ) -> Result<WebView, WryError> {
     let mut builder = WebViewBuilder::new()
-        .with_initialization_script(STARTUP_SCRIPT)
-        .with_accept_first_mouse(true);
-    if let Some(ipc_handler) = ipc_handler {
-        builder = builder.with_ipc_handler(ipc_handler);
-    }
+        .with_initialization_script(API_SCRIPT)
+        .with_initialization_script(WINDOW_SCRIPT)
+        .with_accept_first_mouse(true)
+        .with_ipc_handler(ipc_handler);
     builder = match (html, url) {
         (Some(html), _) => builder.with_html(html),
         (None, Some(url)) => builder.with_url(url),
@@ -210,125 +229,21 @@ fn build_webview(
 }
 
 fn build_ipc_handler(
-    api: HashMap<String, Py<PyFunction>>,
+    api: Option<HashMap<String, Py<PyFunction>>>,
     event_loop_proxy: EventLoopProxy<UserEvent>,
 ) -> impl Fn(Request<String>) + 'static {
     move |request| {
-        let call_request: CallRequest = match from_str(request.body()) {
-            Ok(call_request) => call_request,
-            Err(err) => return eprintln!("{:?}", err),
-        };
-        let call_response = match call_request.run(&api) {
-            Ok(call_response) => call_response,
-            Err(err) => {
+        let request_body = request.body();
+        if !request_body.starts_with("{") {
+            handle_window_requests(request_body, &event_loop_proxy);
+            return;
+        }
+        if let Some(api) = &api {
+            if let Err(err) =
+                handle_api_requests(request_body, api, &event_loop_proxy)
+            {
                 eprintln!("{:?}", err);
-                CallResponse {
-                    call_id: call_request.call_id,
-                    result: None,
-                    error: Some(err.to_string()),
-                }
-            },
-        };
-        if let Err(err) = call_response.run(&event_loop_proxy) {
-            eprintln!("{:?}", err);
+            }
         }
-    }
-}
-
-#[derive(Serialize, Deserialize, PartialEq, Eq, Hash, FromPyObject)]
-#[serde(untagged)]
-enum CommonKey {
-    Boolean(bool),
-    Integer(i64),
-    String(String),
-}
-
-impl ToPyObject for CommonKey {
-    fn to_object(
-        &self,
-        py: Python,
-    ) -> PyObject {
-        match self {
-            CommonKey::Boolean(value) => value.to_object(py),
-            CommonKey::Integer(value) => value.to_object(py),
-            CommonKey::String(value) => value.to_object(py),
-        }
-    }
-}
-
-#[derive(FromPyObject, Serialize, Deserialize)]
-#[serde(untagged)]
-enum CommonType {
-    Boolean(bool),
-    Integer(i64),
-    Float(f64),
-    String(String),
-    List(Vec<CommonType>),
-    Dict(HashMap<CommonKey, CommonType>),
-}
-
-impl ToPyObject for CommonType {
-    fn to_object(
-        &self,
-        py: Python,
-    ) -> PyObject {
-        match self {
-            CommonType::Boolean(value) => value.to_object(py),
-            CommonType::Integer(value) => value.to_object(py),
-            CommonType::Float(value) => value.to_object(py),
-            CommonType::String(value) => value.to_object(py),
-            CommonType::List(value) => value.to_object(py),
-            CommonType::Dict(value) => value.to_object(py),
-        }
-    }
-}
-
-#[derive(Deserialize)]
-struct CallRequest {
-    call_id: String,
-    function: String,
-    arguments: Option<Vec<CommonType>>,
-}
-
-impl CallRequest {
-    fn run(
-        &self,
-        api: &HashMap<String, Py<PyFunction>>,
-    ) -> Result<CallResponse, Box<dyn Error>> {
-        let py_func = api
-            .get(&self.function)
-            .ok_or(format!("Function {} not found.", self.function))?;
-        Python::with_gil(|py| {
-            let py_args = match &self.arguments {
-                Some(args) => PyTuple::new_bound(py, args),
-                None => PyTuple::empty_bound(py),
-            };
-            let py_result: Option<CommonType> =
-                py_func.call1(py, py_args)?.extract(py)?;
-            Ok(CallResponse {
-                call_id: self.call_id.clone(),
-                result: py_result,
-                error: None,
-            })
-        })
-    }
-}
-
-#[derive(Serialize)]
-struct CallResponse {
-    call_id: String,
-    result: Option<CommonType>,
-    error: Option<String>,
-}
-
-impl CallResponse {
-    fn run(
-        &self,
-        event_loop_proxy: &EventLoopProxy<UserEvent>,
-    ) -> Result<(), Box<dyn Error>> {
-        let response = format!("window.ipcCallback({})", to_string(self)?);
-        event_loop_proxy
-            .send_event(UserEvent::EvaluateJavascript(response))?;
-        Ok(())
     }
 }

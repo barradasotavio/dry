@@ -4,6 +4,7 @@ def run(
     title: str,
     min_size: tuple[int, int],
     size: tuple[int, int],
+    decorations: bool | None = None,
     icon_path: str | None = None,
     html: str | None = None,
     url: str | None = None,

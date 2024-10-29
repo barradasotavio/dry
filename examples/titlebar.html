@@ -1,0 +1,86 @@
+<!-- Originally from https://github.com/tauri-apps/wry/blob/dev/examples/custom_titlebar.rs -->
+
+<html>
+
+<head>
+    <style>
+        html {
+            font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
+        }
+
+        * {
+            padding: 0;
+            margin: 0;
+            box-sizing: border-box;
+        }
+
+        *[data-drag-region] {
+            app-region: drag;
+            /* Supported on Windows only, on WebView2 123+ and makes dragging with touch work */
+        }
+
+        main {
+            display: grid;
+            place-items: center;
+            height: calc(100vh - 30px);
+        }
+
+        .titlebar {
+            height: 30px;
+            padding-left: 5px;
+            display: grid;
+            grid-auto-flow: column;
+            grid-template-columns: 1fr max-content max-content max-content;
+            align-items: center;
+            background: #1F1F1F;
+            color: white;
+            user-select: none;
+        }
+
+        .titlebar-button {
+            display: inline-flex;
+            justify-content: center;
+            align-items: center;
+            width: 30px;
+            height: 30px;
+        }
+
+        .titlebar-button:hover {
+            background: #3b3b3b;
+        }
+
+        .titlebar-button#close:hover {
+            background: #da3d3d;
+        }
+
+        .titlebar-button img {
+            filter: invert(100%);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="titlebar">
+        <div data-drag-region>Hello, World!</div>
+        <div>
+            <div class="titlebar-button"
+                onclick="window.ipc.postMessage('minimize')">
+                <img
+                    src="https://api.iconify.design/codicon:chrome-minimize.svg" />
+            </div>
+            <div class="titlebar-button"
+                onclick="window.ipc.postMessage('maximize')">
+                <img
+                    src="https://api.iconify.design/codicon:chrome-maximize.svg" />
+            </div>
+            <div class="titlebar-button" id="close"
+                onclick="window.ipc.postMessage('close')">
+                <img src="https://api.iconify.design/codicon:close.svg" />
+            </div>
+        </div>
+    </div>
+    <main>
+    </main>
+</body>
+
+</html>
