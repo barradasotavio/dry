@@ -13,8 +13,11 @@ use tao::{
 };
 use wry::{http::Request, Error as WryError, WebView, WebViewBuilder};
 
-use api::{handle_api_requests, API_SCRIPT};
-use window::{handle_window_requests, hit_test, HitTestResult, WINDOW_SCRIPT};
+use api::{handle_api_requests, API_JS};
+use window::{
+    handle_window_requests, run_border_check, BorderCheck, WINDOW_BORDERS_JS,
+    WINDOW_EVENTS_JS, WINDOW_FUNCTIONS_JS,
+};
 
 #[pymodule]
 fn dry(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -43,19 +46,32 @@ fn run(
     api: Option<HashMap<String, Py<PyFunction>>>,
     dev_tools: Option<bool>,
 ) {
+    let (is_decorations, is_api, is_dev_tools) = (
+        decorations.unwrap_or(true),
+        api.is_some(),
+        dev_tools.unwrap_or(false),
+    );
     let event_loop = IEventLoop::new().unwrap();
     let window = build_window(
         &event_loop.instance,
         title,
         min_size,
         size,
-        decorations,
+        is_decorations,
         icon_path,
     )
     .unwrap();
     let ipc_handler = build_ipc_handler(api, event_loop.proxy.clone());
-    let webview =
-        build_webview(&window, ipc_handler, html, url, dev_tools).unwrap();
+    let webview = build_webview(
+        &window,
+        ipc_handler,
+        html,
+        url,
+        is_decorations,
+        is_api,
+        is_dev_tools,
+    )
+    .unwrap();
     event_loop.run(window, webview);
 }
 
@@ -67,7 +83,6 @@ enum UserEvent {
     DragWindow,
     CloseWindow,
     MouseDown(u32, u32),
-    MouseMove(u32, u32),
 }
 
 struct IEventLoop {
@@ -121,26 +136,16 @@ impl IEventLoop {
                     },
                     UserEvent::DragWindow => window.drag_window().unwrap(),
                     UserEvent::MouseDown(x, y) => {
-                        let res = hit_test(
+                        let res = run_border_check(
                             window.inner_size(),
                             x,
                             y,
                             window.scale_factor(),
                         );
                         match res {
-                            HitTestResult::Client | HitTestResult::NoWhere => {
-                            },
+                            BorderCheck::Client | BorderCheck::NoWhere => {},
                             _ => res.drag_resize_window(&window),
                         }
-                    },
-                    UserEvent::MouseMove(x, y) => {
-                        hit_test(
-                            window.inner_size(),
-                            x,
-                            y,
-                            window.scale_factor(),
-                        )
-                        .change_cursor(&window);
                     },
                     UserEvent::CloseWindow => {},
                 },
@@ -155,7 +160,7 @@ fn build_window(
     title: &str,
     min_size: (u32, u32),
     size: (u32, u32),
-    decorations: Option<bool>,
+    decorations: bool,
     icon_path: Option<&str>,
 ) -> Result<Window, OsError> {
     let min_size = PhysicalSize::new(min_size.0, min_size.1);
@@ -163,15 +168,14 @@ fn build_window(
     let mut window_builder = WindowBuilder::new()
         .with_title(title)
         .with_min_inner_size(min_size)
-        .with_inner_size(size);
-    if let Some(decorations) = decorations {
-        window_builder = window_builder.with_decorations(decorations);
-    }
+        .with_inner_size(size)
+        .with_decorations(decorations);
     if let Some(icon_path) = icon_path {
         let icon = load_icon(Path::new(icon_path));
         window_builder = window_builder.with_window_icon(icon);
     }
-    Ok(window_builder.build(event_loop)?)
+    let window = window_builder.build(event_loop)?;
+    Ok(window)
 }
 
 fn load_icon(path: &Path) -> Option<Icon> {
@@ -191,21 +195,27 @@ fn build_webview(
     ipc_handler: impl Fn(Request<String>) + 'static,
     html: Option<&str>,
     url: Option<&str>,
-    dev_tools: Option<bool>,
+    decorations: bool,
+    api: bool,
+    dev_tools: bool,
 ) -> Result<WebView, WryError> {
     let mut builder = WebViewBuilder::new()
-        .with_initialization_script(API_SCRIPT)
-        .with_initialization_script(WINDOW_SCRIPT)
-        .with_accept_first_mouse(true)
-        .with_ipc_handler(ipc_handler);
+        .with_initialization_script(WINDOW_FUNCTIONS_JS)
+        .with_initialization_script(WINDOW_EVENTS_JS)
+        .with_devtools(dev_tools)
+        .with_ipc_handler(ipc_handler)
+        .with_accept_first_mouse(true);
+    if !decorations {
+        builder = builder.with_initialization_script(WINDOW_BORDERS_JS);
+    }
+    if api {
+        builder = builder.with_initialization_script(API_JS);
+    }
     builder = match (html, url) {
         (Some(html), _) => builder.with_html(html),
         (None, Some(url)) => builder.with_url(url),
         (None, None) => panic!("No html or url provided."),
     };
-    if let Some(dev_tools) = dev_tools {
-        builder = builder.with_devtools(dev_tools);
-    }
     #[cfg(any(
         target_os = "windows",
         target_os = "macos",
@@ -234,7 +244,11 @@ fn build_ipc_handler(
 ) -> impl Fn(Request<String>) + 'static {
     move |request| {
         let request_body = request.body();
-        handle_window_requests(request_body, &event_loop_proxy);
+
+        if request_body.starts_with("window_control") {
+            handle_window_requests(request_body, &event_loop_proxy);
+            return;
+        }
 
         if let Some(api) = &api {
             if let Err(err) =

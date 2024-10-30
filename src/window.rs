@@ -1,15 +1,18 @@
 use std::str::Split;
-
 use tao::{
     dpi::{LogicalSize, PhysicalSize},
     event_loop::EventLoopProxy,
-    window::{CursorIcon, ResizeDirection, Window},
+    window::{ResizeDirection, Window},
 };
 
 use crate::UserEvent;
 
-#[derive(Debug)]
-pub enum HitTestResult {
+pub const WINDOW_FUNCTIONS_JS: &str = include_str!("js/window_functions.js");
+pub const WINDOW_EVENTS_JS: &str = include_str!("js/window_events.js");
+pub const WINDOW_BORDERS_JS: &str = include_str!("js/window_borders.js");
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum BorderCheck {
     Client,
     Left,
     Right,
@@ -22,85 +25,52 @@ pub enum HitTestResult {
     NoWhere,
 }
 
-impl HitTestResult {
+impl BorderCheck {
     pub fn drag_resize_window(
         &self,
         window: &Window,
     ) {
         let _ = window.drag_resize_window(match self {
-            HitTestResult::Left => ResizeDirection::West,
-            HitTestResult::Right => ResizeDirection::East,
-            HitTestResult::Top => ResizeDirection::North,
-            HitTestResult::Bottom => ResizeDirection::South,
-            HitTestResult::TopLeft => ResizeDirection::NorthWest,
-            HitTestResult::TopRight => ResizeDirection::NorthEast,
-            HitTestResult::BottomLeft => ResizeDirection::SouthWest,
-            HitTestResult::BottomRight => ResizeDirection::SouthEast,
+            BorderCheck::Left => ResizeDirection::West,
+            BorderCheck::Right => ResizeDirection::East,
+            BorderCheck::Top => ResizeDirection::North,
+            BorderCheck::Bottom => ResizeDirection::South,
+            BorderCheck::TopLeft => ResizeDirection::NorthWest,
+            BorderCheck::TopRight => ResizeDirection::NorthEast,
+            BorderCheck::BottomLeft => ResizeDirection::SouthWest,
+            BorderCheck::BottomRight => ResizeDirection::SouthEast,
             _ => unreachable!(),
-        });
-    }
-
-    pub fn change_cursor(
-        &self,
-        window: &Window,
-    ) {
-        window.set_cursor_icon(match self {
-            HitTestResult::Left => CursorIcon::WResize,
-            HitTestResult::Right => CursorIcon::EResize,
-            HitTestResult::Top => CursorIcon::NResize,
-            HitTestResult::Bottom => CursorIcon::SResize,
-            HitTestResult::TopLeft => CursorIcon::NwResize,
-            HitTestResult::TopRight => CursorIcon::NeResize,
-            HitTestResult::BottomLeft => CursorIcon::SwResize,
-            HitTestResult::BottomRight => CursorIcon::SeResize,
-            _ => CursorIcon::Default,
         });
     }
 }
 
-pub fn hit_test(
+pub fn run_border_check(
     window_size: PhysicalSize<u32>,
     x: u32,
     y: u32,
     scale: f64,
-) -> HitTestResult {
+) -> BorderCheck {
     const BORDERLESS_RESIZE_INSET: f64 = 5.0;
 
-    const CLIENT: isize = 0b0000;
-    const LEFT: isize = 0b0001;
-    const RIGHT: isize = 0b0010;
-    const TOP: isize = 0b0100;
-    const BOTTOM: isize = 0b1000;
-    const TOPLEFT: isize = TOP | LEFT;
-    const TOPRIGHT: isize = TOP | RIGHT;
-    const BOTTOMLEFT: isize = BOTTOM | LEFT;
-    const BOTTOMRIGHT: isize = BOTTOM | RIGHT;
+    let window_size_logical: LogicalSize<u32> = window_size.to_logical(scale);
+    let inset = (BORDERLESS_RESIZE_INSET * scale).ceil() as u32;
 
-    let window_size: LogicalSize<u32> = window_size.to_logical(scale);
+    let left = x < inset;
+    let right = x >= window_size_logical.width - inset;
+    let top = y < inset;
+    let bottom = y >= window_size_logical.height - inset;
 
-    let (top, left) = (0, 0);
-    let (bottom, right) = (window_size.height, window_size.width);
-
-    let inset = (BORDERLESS_RESIZE_INSET * scale) as u32;
-
-    #[rustfmt::skip]
-    let result =
-        (LEFT * (if x < (left + inset) { 1 } else { 0 }))
-        | (RIGHT * (if x >= (right - inset) { 1 } else { 0 }))
-        | (TOP * (if y < (top + inset) { 1 } else { 0 }))
-        | (BOTTOM * (if y >= (bottom - inset) { 1 } else { 0 }));
-
-    match result {
-        CLIENT => HitTestResult::Client,
-        LEFT => HitTestResult::Left,
-        RIGHT => HitTestResult::Right,
-        TOP => HitTestResult::Top,
-        BOTTOM => HitTestResult::Bottom,
-        TOPLEFT => HitTestResult::TopLeft,
-        TOPRIGHT => HitTestResult::TopRight,
-        BOTTOMLEFT => HitTestResult::BottomLeft,
-        BOTTOMRIGHT => HitTestResult::BottomRight,
-        _ => HitTestResult::NoWhere,
+    match (left, right, top, bottom) {
+        (true, false, true, false) => BorderCheck::TopLeft,
+        (false, true, true, false) => BorderCheck::TopRight,
+        (true, false, false, true) => BorderCheck::BottomLeft,
+        (false, true, false, true) => BorderCheck::BottomRight,
+        (true, false, false, false) => BorderCheck::Left,
+        (false, true, false, false) => BorderCheck::Right,
+        (false, false, true, false) => BorderCheck::Top,
+        (false, false, false, true) => BorderCheck::Bottom,
+        (false, false, false, false) => BorderCheck::Client,
+        _ => BorderCheck::NoWhere,
     }
 }
 
@@ -120,10 +90,7 @@ pub fn handle_window_requests(
     proxy: &EventLoopProxy<UserEvent>,
 ) {
     let mut request = request_body.split([':', ',']);
-
-    if request.next() != Some("window_control") {
-        return;
-    }
+    request.next(); // Skip the "window_control" prefix
 
     let action = match request.next() {
         Some(action) => action,
@@ -138,12 +105,8 @@ pub fn handle_window_requests(
         "toggle_maximize" => proxy.send_event(UserEvent::Maximize),
         "close" => proxy.send_event(UserEvent::CloseWindow),
         "drag" => proxy.send_event(UserEvent::DragWindow),
-        "mouse_move" | "mouse_down" => match parse_coordinates(&mut request) {
-            Ok((x, y)) => match action {
-                "mouse_move" => proxy.send_event(UserEvent::MouseMove(x, y)),
-                "mouse_down" => proxy.send_event(UserEvent::MouseDown(x, y)),
-                _ => unreachable!(),
-            },
+        "mouse_down" => match parse_coordinates(&mut request) {
+            Ok((x, y)) => proxy.send_event(UserEvent::MouseDown(x, y)),
             Err(e) => {
                 eprintln!("Failed to parse coordinates: {}", e);
                 return;
@@ -159,35 +122,3 @@ pub fn handle_window_requests(
         eprintln!("Failed to send event: {:?}", e);
     }
 }
-
-pub const WINDOW_SCRIPT: &str = r#"
-Object.assign(window, {
-    messageMouseMove: (x, y) => window.ipc.postMessage(`window_control:mouse_move:${x},${y}`),
-    messageMouseDown: (x, y) => window.ipc.postMessage(`window_control:mouse_down:${x},${y}`),
-    drag: () => window.ipc.postMessage('window_control:drag'),
-    minimize: () => window.ipc.postMessage('window_control:minimize'),
-    toggleMaximize: () => window.ipc.postMessage('window_control:toggle_maximize'),
-    close: () => window.ipc.postMessage('window_control:close'),
-});
-
-document.addEventListener('mousemove', (e) => {
-    window.messageMouseMove(e.clientX, e.clientY);
-})
-
-document.addEventListener('mousedown', (e) => {
-    const isMainMouseButton = e.button === 0;
-    if (!isMainMouseButton) { return; }
-
-    const isDragRegion = e.target.hasAttribute('data-drag-region');
-    if (!isDragRegion) { window.messageMouseDown(e.clientX, e.clientY); return; }
-
-    const isDoubleClick = e.detail === 2;
-    if (isDoubleClick) { window.toggleMaximize(); }
-    else { window.drag(); }
-})
-
-document.addEventListener('touchstart', (e) => {
-    const isDragRegion = e.target.hasAttribute('data-drag-region');
-    if (isDragRegion) window.drag();
-})
-"#;
