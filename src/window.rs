@@ -1,3 +1,5 @@
+use std::str::Split;
+
 use tao::{
     dpi::{LogicalSize, PhysicalSize},
     event_loop::EventLoopProxy,
@@ -102,52 +104,90 @@ pub fn hit_test(
     }
 }
 
+fn parse_coordinates(
+    request: &mut Split<[char; 2]>
+) -> Result<(u32, u32), &'static str> {
+    if let (Some(x_str), Some(y_str)) = (request.next(), request.next()) {
+        if let (Ok(x), Ok(y)) = (x_str.parse::<u32>(), y_str.parse::<u32>()) {
+            return Ok((x, y));
+        }
+    }
+    Err("Invalid or missing coordinates")
+}
+
 pub fn handle_window_requests(
     request_body: &String,
     proxy: &EventLoopProxy<UserEvent>,
 ) {
     let mut request = request_body.split([':', ',']);
-    match request.next().unwrap() {
-        "minimize" => {
-            let _ = proxy.send_event(UserEvent::Minimize);
+
+    if request.next() != Some("window_control") {
+        return;
+    }
+
+    let action = match request.next() {
+        Some(action) => action,
+        None => {
+            eprintln!("Invalid request: {}", request_body);
+            return;
         },
-        "maximize" => {
-            let _ = proxy.send_event(UserEvent::Maximize);
+    };
+
+    let result = match action {
+        "minimize" => proxy.send_event(UserEvent::Minimize),
+        "toggle_maximize" => proxy.send_event(UserEvent::Maximize),
+        "close" => proxy.send_event(UserEvent::CloseWindow),
+        "drag" => proxy.send_event(UserEvent::DragWindow),
+        "mouse_move" | "mouse_down" => match parse_coordinates(&mut request) {
+            Ok((x, y)) => match action {
+                "mouse_move" => proxy.send_event(UserEvent::MouseMove(x, y)),
+                "mouse_down" => proxy.send_event(UserEvent::MouseDown(x, y)),
+                _ => unreachable!(),
+            },
+            Err(e) => {
+                eprintln!("Failed to parse coordinates: {}", e);
+                return;
+            },
         },
-        "drag_window" => {
-            let _ = proxy.send_event(UserEvent::DragWindow);
+        _ => {
+            eprintln!("Invalid window control: {}", action);
+            return;
         },
-        "close" => {
-            let _ = proxy.send_event(UserEvent::CloseWindow);
-        },
-        "mousedown" => {
-            let x = request.next().unwrap().parse().unwrap();
-            let y = request.next().unwrap().parse().unwrap();
-            let _ = proxy.send_event(UserEvent::MouseDown(x, y));
-        },
-        "mousemove" => {
-            let x = request.next().unwrap().parse().unwrap();
-            let y = request.next().unwrap().parse().unwrap();
-            let _ = proxy.send_event(UserEvent::MouseMove(x, y));
-        },
-        _ => {},
+    };
+
+    if let Err(e) = result {
+        eprintln!("Failed to send event: {:?}", e);
     }
 }
 
 pub const WINDOW_SCRIPT: &str = r#"
-document.addEventListener('mousemove', (e) => window.ipc.postMessage(`mousemove:${e.clientX},${e.clientY}`))
-document.addEventListener('mousedown', (e) => {
-    if (e.target.hasAttribute('data-drag-region') && e.button === 0) {
-        e.detail === 2
-            ? window.ipc.postMessage('maximize')
-            : window.ipc.postMessage('drag_window');
-    } else {
-    window.ipc.postMessage(`mousedown:${e.clientX},${e.clientY}`);
-    }
+Object.assign(window, {
+    messageMouseMove: (x, y) => window.ipc.postMessage(`window_control:mouse_move:${x},${y}`),
+    messageMouseDown: (x, y) => window.ipc.postMessage(`window_control:mouse_down:${x},${y}`),
+    drag: () => window.ipc.postMessage('window_control:drag'),
+    minimize: () => window.ipc.postMessage('window_control:minimize'),
+    toggleMaximize: () => window.ipc.postMessage('window_control:toggle_maximize'),
+    close: () => window.ipc.postMessage('window_control:close'),
+});
+
+document.addEventListener('mousemove', (e) => {
+    window.messageMouseMove(e.clientX, e.clientY);
 })
+
+document.addEventListener('mousedown', (e) => {
+    const isMainMouseButton = e.button === 0;
+    if (!isMainMouseButton) { return; }
+
+    const isDragRegion = e.target.hasAttribute('data-drag-region');
+    if (!isDragRegion) { window.messageMouseDown(e.clientX, e.clientY); return; }
+
+    const isDoubleClick = e.detail === 2;
+    if (isDoubleClick) { window.toggleMaximize(); }
+    else { window.drag(); }
+})
+
 document.addEventListener('touchstart', (e) => {
-    if (e.target.hasAttribute('data-drag-region')) {
-        window.ipc.postMessage('drag_window');
-    }
+    const isDragRegion = e.target.hasAttribute('data-drag-region');
+    if (isDragRegion) window.drag();
 })
 "#;

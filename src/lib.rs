@@ -234,10 +234,8 @@ fn build_ipc_handler(
 ) -> impl Fn(Request<String>) + 'static {
     move |request| {
         let request_body = request.body();
-        if !request_body.starts_with("{") {
-            handle_window_requests(request_body, &event_loop_proxy);
-            return;
-        }
+        handle_window_requests(request_body, &event_loop_proxy);
+
         if let Some(api) = &api {
             if let Err(err) =
                 handle_api_requests(request_body, api, &event_loop_proxy)

@@ -63,18 +63,15 @@
     <div class="titlebar">
         <div data-drag-region>Hello, World!</div>
         <div>
-            <div class="titlebar-button"
-                onclick="window.ipc.postMessage('minimize')">
+            <div class="titlebar-button" onclick="window.minimize()">
                 <img
                     src="https://api.iconify.design/codicon:chrome-minimize.svg" />
             </div>
-            <div class="titlebar-button"
-                onclick="window.ipc.postMessage('maximize')">
+            <div class="titlebar-button" onclick="window.toggleMaximize()">
                 <img
                     src="https://api.iconify.design/codicon:chrome-maximize.svg" />
             </div>
-            <div class="titlebar-button" id="close"
-                onclick="window.ipc.postMessage('close')">
+            <div class="titlebar-button" id="close" onclick="window.close()">
                 <img src="https://api.iconify.design/codicon:close.svg" />
             </div>
         </div>
