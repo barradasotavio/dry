@@ -29,6 +29,6 @@ quote-style = "single"
 [tool.taskipy.tasks]
 pre_format = "uv run ruff check --fix"
 format = "uv run ruff format"
-dev = "uv run maturin develop --strip --release --uv"
+dev = "uv run maturin develop --uv && uv run"
 pre_release = "cargo clean"
 release = "uv run maturin build --strip --release"

@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{from_str, to_string};
 use tao::event_loop::EventLoopProxy;
 
-use crate::UserEvent;
+use crate::AppEvent;
 
 pub const API_JS: &str = include_str!("js/api.js");
 
@@ -101,11 +101,10 @@ struct CallResponse {
 impl CallResponse {
     fn run(
         &self,
-        event_loop_proxy: &EventLoopProxy<UserEvent>,
+        event_loop_proxy: &EventLoopProxy<AppEvent>,
     ) -> Result<(), Box<dyn Error>> {
         let response = format!("window.ipcCallback({})", to_string(self)?);
-        event_loop_proxy
-            .send_event(UserEvent::EvaluateJavascript(response))?;
+        event_loop_proxy.send_event(AppEvent::RunJavascript(response))?;
         Ok(())
     }
 }
@@ -113,7 +112,7 @@ impl CallResponse {
 pub fn handle_api_requests(
     request_body: &String,
     api: &HashMap<String, Py<PyFunction>>,
-    event_loop_proxy: &EventLoopProxy<UserEvent>,
+    event_loop_proxy: &EventLoopProxy<AppEvent>,
 ) -> Result<(), Box<dyn Error>> {
     let call_request: CallRequest = from_str(request_body)?;
     let call_response = match call_request.run(api) {

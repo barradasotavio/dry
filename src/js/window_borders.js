@@ -1,4 +1,8 @@
 document.addEventListener('DOMContentLoaded', () => {
+    const style = document.createElement('style');
+    style.textContent = '*[data-drag-region] { app-region: drag; }';
+    document.head.appendChild(style);
+
     const edgeThickness = '5px';
     const body = document.body;
 
@@ -39,3 +43,5 @@ document.addEventListener('DOMContentLoaded', () => {
         edgeDivs.push(div);
     });
 });
+
+

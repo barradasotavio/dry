@@ -1,7 +1,7 @@
 mod api;
 mod window;
 
-use std::{collections::HashMap, error::Error, path::Path};
+use std::{collections::HashMap, path::Path};
 
 use pyo3::{prelude::*, types::PyFunction};
 use tao::{
@@ -15,7 +15,7 @@ use wry::{http::Request, Error as WryError, WebView, WebViewBuilder};
 
 use api::{handle_api_requests, API_JS};
 use window::{
-    handle_window_requests, run_border_check, BorderCheck, WINDOW_BORDERS_JS,
+    handle_window_requests, run_border_check, Border, WINDOW_BORDERS_JS,
     WINDOW_EVENTS_JS, WINDOW_FUNCTIONS_JS,
 };
 
@@ -51,9 +51,14 @@ fn run(
         api.is_some(),
         dev_tools.unwrap_or(false),
     );
-    let event_loop = IEventLoop::new().unwrap();
+
+    let event_loop_instance =
+        EventLoopBuilder::<AppEvent>::with_user_event().build();
+
+    let event_loop_proxy = event_loop_instance.create_proxy();
+
     let window = build_window(
-        &event_loop.instance,
+        &event_loop_instance,
         title,
         min_size,
         size,
@@ -61,7 +66,9 @@ fn run(
         icon_path,
     )
     .unwrap();
-    let ipc_handler = build_ipc_handler(api, event_loop.proxy.clone());
+
+    let ipc_handler = build_ipc_handler(api, event_loop_proxy);
+
     let webview = build_webview(
         &window,
         ipc_handler,
@@ -72,91 +79,115 @@ fn run(
         is_dev_tools,
     )
     .unwrap();
-    event_loop.run(window, webview);
+
+    run_event_loop(event_loop_instance, window, webview);
 }
 
 #[derive(Debug)]
-enum UserEvent {
-    EvaluateJavascript(String),
-    Minimize,
-    Maximize,
-    DragWindow,
-    CloseWindow,
+enum AppEvent {
+    RunJavascript(String),
     MouseDown(u32, u32),
+    DragWindow,
+    MinimizeWindow,
+    MaximizeWindow,
+    CloseWindow,
 }
 
-struct IEventLoop {
-    instance: EventLoop<UserEvent>,
-    proxy: EventLoopProxy<UserEvent>,
+fn run_event_loop(
+    event_loop: EventLoop<AppEvent>,
+    window: Window,
+    webview: WebView,
+) {
+    let mut webview = webview;
+    event_loop.run(move |event, _, control_flow| {
+        *control_flow = ControlFlow::Wait;
+
+        match event {
+            Event::NewEvents(StartCause::Init) => {
+                println!("{} started", window.title());
+            },
+            Event::WindowEvent { event, .. } => {
+                handle_window_event(event, &mut webview, control_flow)
+            },
+            Event::UserEvent(app_event) => handle_app_event(
+                app_event,
+                &window,
+                &mut webview,
+                control_flow,
+            ),
+            _ => (),
+        }
+    });
 }
 
-impl IEventLoop {
-    fn new() -> Result<Self, Box<dyn Error>> {
-        let event_loop =
-            EventLoopBuilder::<UserEvent>::with_user_event().build();
-        let event_loop_proxy = event_loop.create_proxy();
-        Ok(Self {
-            instance: event_loop,
-            proxy: event_loop_proxy,
-        })
+fn handle_window_event(
+    event: WindowEvent,
+    webview: &mut WebView,
+    control_flow: &mut ControlFlow,
+) {
+    match event {
+        WindowEvent::CloseRequested => exit_app(webview, control_flow),
+        _ => (),
     }
+}
 
-    fn run(
-        self,
-        window: Window,
-        webview: WebView,
-    ) {
-        let mut webview = Some(webview);
-        self.instance.run(move |event, _, control_flow| {
-            *control_flow = ControlFlow::Wait;
-
-            match event {
-                Event::NewEvents(StartCause::Init) => {},
-                Event::WindowEvent {
-                    event: WindowEvent::CloseRequested,
-                    ..
-                }
-                | Event::UserEvent(UserEvent::CloseWindow) => {
-                    let _ = webview.take();
-                    *control_flow = ControlFlow::Exit
-                },
-
-                Event::UserEvent(e) => match e {
-                    UserEvent::EvaluateJavascript(js_code) => {
-                        if let Some(webview) = webview.as_ref() {
-                            if let Err(err) = webview.evaluate_script(&js_code)
-                            {
-                                eprintln!("{:?}", err);
-                            }
-                        }
-                    },
-                    UserEvent::Minimize => window.set_minimized(true),
-                    UserEvent::Maximize => {
-                        window.set_maximized(!window.is_maximized())
-                    },
-                    UserEvent::DragWindow => window.drag_window().unwrap(),
-                    UserEvent::MouseDown(x, y) => {
-                        let res = run_border_check(
-                            window.inner_size(),
-                            x,
-                            y,
-                            window.scale_factor(),
-                        );
-                        match res {
-                            BorderCheck::Client | BorderCheck::NoWhere => {},
-                            _ => res.drag_resize_window(&window),
-                        }
-                    },
-                    UserEvent::CloseWindow => {},
-                },
-                _ => (),
+fn handle_app_event(
+    event: AppEvent,
+    window: &Window,
+    webview: &mut WebView,
+    control_flow: &mut ControlFlow,
+) {
+    match event {
+        AppEvent::RunJavascript(js) => run_javascript(webview, &js),
+        AppEvent::CloseWindow => exit_app(webview, control_flow),
+        AppEvent::MinimizeWindow => window.set_minimized(true),
+        AppEvent::MaximizeWindow => {
+            let is_maximized = window.is_maximized();
+            window.set_maximized(!is_maximized);
+        },
+        AppEvent::DragWindow => {
+            if let Err(e) = window.drag_window() {
+                eprintln!("Failed to drag window: {:?}", e);
             }
-        });
+        },
+        AppEvent::MouseDown(x, y) => handle_mouse_down(window, x, y),
     }
+}
+
+fn run_javascript(
+    webview: &WebView,
+    js: &str,
+) {
+    if let Err(err) = webview.evaluate_script(js) {
+        eprintln!("Failed to evaluate JavaScript: {:?}", err);
+    }
+}
+
+fn handle_mouse_down(
+    window: &Window,
+    x: u32,
+    y: u32,
+) {
+    let border_check =
+        run_border_check(window.inner_size(), x, y, window.scale_factor());
+
+    match border_check {
+        Border::Client | Border::NoWhere => {},
+        _ => border_check.drag_resize_window(window),
+    }
+}
+
+fn exit_app(
+    webview: &mut WebView,
+    control_flow: &mut ControlFlow,
+) {
+    let mut webview = Some(webview);
+    webview.take();
+    *control_flow = ControlFlow::Exit;
 }
 
 fn build_window(
-    event_loop: &EventLoop<UserEvent>,
+    event_loop: &EventLoop<AppEvent>,
     title: &str,
     min_size: (u32, u32),
     size: (u32, u32),
@@ -203,44 +234,25 @@ fn build_webview(
         .with_initialization_script(WINDOW_FUNCTIONS_JS)
         .with_initialization_script(WINDOW_EVENTS_JS)
         .with_devtools(dev_tools)
-        .with_ipc_handler(ipc_handler)
-        .with_accept_first_mouse(true);
-    if !decorations {
-        builder = builder.with_initialization_script(WINDOW_BORDERS_JS);
-    }
+        .with_ipc_handler(ipc_handler);
     if api {
         builder = builder.with_initialization_script(API_JS);
+    }
+    if !decorations {
+        builder = builder.with_initialization_script(WINDOW_BORDERS_JS);
     }
     builder = match (html, url) {
         (Some(html), _) => builder.with_html(html),
         (None, Some(url)) => builder.with_url(url),
         (None, None) => panic!("No html or url provided."),
     };
-    #[cfg(any(
-        target_os = "windows",
-        target_os = "macos",
-        target_os = "ios",
-        target_os = "android"
-    ))]
     let webview = builder.build(window)?;
-    #[cfg(not(any(
-        target_os = "windows",
-        target_os = "macos",
-        target_os = "ios",
-        target_os = "android"
-    )))]
-    let webview = {
-        use tao::platform::unix::WindowExtUnix;
-        use wry::WebViewBuilderExtUnix;
-        let vbox = window.default_vbox()?;
-        builder.build_gtk(vbox)?
-    };
     Ok(webview)
 }
 
 fn build_ipc_handler(
     api: Option<HashMap<String, Py<PyFunction>>>,
-    event_loop_proxy: EventLoopProxy<UserEvent>,
+    event_loop_proxy: EventLoopProxy<AppEvent>,
 ) -> impl Fn(Request<String>) + 'static {
     move |request| {
         let request_body = request.body();
