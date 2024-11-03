@@ -1,56 +1,74 @@
-# Dry: a tiny webview library for Python
+# Dry: give a UI to your Python app using web tech
 
-Dry is an attempt to provide a minimalistic webview library for Python, designed to be as simple as possible and to have no dependencies other than its binary. It is powered by [Rust](https://www.rust-lang.org/), [Maturin](https://github.com/PyO3/maturin) and [PyO3](https://github.com/PyO3/pyo3), being built on top of [Wry](https://github.com/tauri-apps/wry) and [Tao](https://github.com/tauri-apps/tao).
+**Dry** is a minimal, no-dependency webview library for Python that lets you use your web development skills to create user interfaces for your Python applications. Built with [Rust](https://www.rust-lang.org/) and leveraging [Wry](https://github.com/tauri-apps/wry) and [Tao](https://github.com/tauri-apps/tao), Dry is designed to be simple, lightweight, and easy to integrate—no need for extra packages.
+
+## Why Choose Dry?
+
+- **Familiar Web Technologies**: Use HTML, CSS, and JavaScript to design interfaces for your Python apps.
+- **Concise API**: Instantiate a `wv = Webview()` object, configure a few settings, and call `wv.run()`—that’s it!
+- **Versatile Content**: Load content from HTTP/HTTPS sources or render HTML directly, all without a server.
+- **Customizable Windows**: Supports borderless windows and custom titlebars for a tailored UI experience—native window decorations are also available if you prefer.
+- **Small Footprint**: The binaries are around 700 KB, which reduce to 200 KB after compression with PyInstaller or UPX.
 
 ## Installation
 
-Dry installation has been tested with pip and uv:
+Getting started with Dry is straightforward. Simply use `pip` or `uv` to install:
 
 ```bash
 pip install dry-webview
 uv add dry-webview
 ```
-## Usage
 
-Here is a simple example of how to use Dry:
+## Simple, Intuitive Usage
+
+Here's a quick example of how to use Dry to create a simple webview:
 
 ```python
 from dry import Webview
 
 wv = Webview()
-wv.title = "Hello, World!"
-wv.content =  "https://www.example.com" or "<h1>Hello, World!</h1>"
+wv.title = "My Python App!"
+wv.content = "<h1>Hello, World!</h1>"
 wv.run()
 ```
 
-A more complete example can be found in the [`examples`](https://github.com/barradasotavio/dry/tree/master/examples) directory.
+For more examples, check out the [examples directory](https://github.com/barradasotavio/dry/tree/master/examples).
 
-## Status
+## Current Status
 
-Dry is in early stages of development and it has been tested and compiled only for Windows. There may be bugs or missing functionality. Breaking changes may occur in future releases.
+Dry is in its early stages and currently supports Windows. Linux and macOS support are planned. Expect ongoing development, new features, and potential changes as the library evolves.
 
 ## Roadmap
 
-*Legend*:  
-🟢 Already implemented — 🟡 In progress — 🔴 Not started
+| Feature                             | Status      |
+| ----------------------------------- | ----------- |
+| Rendering HTML                      | ✅ Completed |
+| Loading HTTP/HTTPS                  | ✅ Completed |
+| Calling Python from JavaScript      | ✅ Completed |
+| Browser Developer Tools             | ✅ Completed |
+| Custom Titlebars                    | ✅ Completed |
+| Custom Icons                        | ✅ Completed |
+| PyInstaller Support                 | ✅ Completed |
+| Calling JavaScript from Python      | ❌ Not Yet   |
+| Touch Support in Borderless Windows | ❌ Not Yet   |
 
-### Features
-- 🟢 Render HTML content
-- 🟢 Load HTTP/HTTPS content
-- 🟢 Call Python functions from JavaScript
-- 🟢 Enable dev mode (dev tools and auto reload)
-- 🟢 Customize the titlebar/taskbar icon
-- 🟢 Allow usage of custom titlebar
-- 🔴 Enable JavaScript calls from Python
-- 🔴 Store and manage global state in Python
-- 🔴 Support PyInstaller
+## Platform Compatibility
 
-### Platform Compatibility
-- 🟢 Windows support
-- 🔴 Linux support
-- 🔴 MacOS support
+| Platform   | Status    |
+| ---------- | --------- |
+| Windows 11 | ✅ Tested  |
+| Linux      | ❌ Not Yet |
+| macOS      | ❌ Not Yet |
 
-### Python Compatibility
-- 🔴 CPython 3.13
-- 🟢 CPython 3.12
-- 🔴 CPython 3.11
+## Python Compatibility
+
+| Python Version | Status    |
+| -------------- | --------- |
+| CPython 3.11   | ❌ Not Yet |
+| CPython 3.12   | ✅ Tested  |
+| CPython 3.13   | ❌ Not Yet |
+
+## License
+
+Dry is distributed under the MIT License. For more details, see the [LICENSE](https://github.com/barradasotavio/dry/blob/master/LICENSE) file.
+

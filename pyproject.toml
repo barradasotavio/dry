@@ -5,9 +5,20 @@ build-backend = "maturin"
 [project]
 name = "dry-webview"
 requires-python = ">=3.12"
+description = "Use your web dev skills to design UIs for your Python apps with this simple, Rust-powered webview library."
+authors = [{ name = "Otávio Barradas" }]
+readme = "README.md"
+license = { text = "MIT" }
+keywords = ["webview", "gui", "rust", "ui", "web", "python"]
+urls = { "Homepage" = "https://github.com/barradasotavio/dry", "Repository" = "https://github.com/barradasotavio/dry.git" }
 classifiers = [
-    "Programming Language :: Rust",
     "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Rust",
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: Microsoft :: Windows",
+    "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dynamic = ["version"]
 
@@ -32,3 +43,4 @@ format = "uv run ruff format"
 dev = "uv run maturin develop --uv && uv run"
 pre_release = "cargo clean"
 release = "uv run maturin build --strip --release"
+preview = "uv run task release && uv run"

@@ -1,0 +1,105 @@
+MIT License
+
+Copyright (c) 2024 Otávio Barradas
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+Portions of this software are derived from the Wry project.
+
+Wry is dual-licensed under the MIT License and the Apache License, Version 2.0. The MIT License has been chosen for this project.
+
+MIT License
+
+Copyright (c) 2021-2024, The Tauri Programme within The Commons Conservancy
+
+Source: https://github.com/tauri-apps/wry
+
+---
+
+Portions of this software are derived from the Tao project.
+
+Tao is dual-licensed under the MIT License and the Apache License, Version 2.0. The MIT License has been chosen for this project.
+
+MIT License
+
+Copyright (c) 2021-2024, The Tauri Programme within The Commons Conservancy
+
+Source: https://github.com/tauri-apps/tao
+
+---
+
+Portions of this software are derived from the PyO3 project.
+
+PyO3 is dual-licensed under the MIT License and the Apache License, Version 2.0. The MIT License has been chosen for this project.
+
+MIT License
+
+Copyright (c) 2017-2024, PyO3 Project and Contributors
+
+Source: https://github.com/PyO3/pyo3
+
+---
+
+Portions of this software are derived from the Maturin project.
+
+Maturin is dual-licensed under the MIT License and the Apache License, Version 2.0. The MIT License has been chosen for this project.
+
+MIT License
+
+Copyright (c) 2019-2024, Maturin Project and Contributors
+
+Source: https://github.com/PyO3/maturin
+
+---
+
+Portions of this software are derived from the Image project.
+
+Image is dual-licensed under the MIT License and the Apache License, Version 2.0. The MIT License has been chosen for this project.
+
+MIT License
+
+Copyright (c) 2014-2024, The Image-rs Developers
+
+Source: https://github.com/image-rs/image
+
+---
+
+Portions of this software are derived from the Serde project.
+
+Serde is dual-licensed under the MIT License and the Apache License, Version 2.0. The MIT License has been chosen for this project.
+
+MIT License
+
+Copyright (c) 2014-2024, Serde Project and Contributors
+
+Source: https://github.com/serde-rs/serde
+
+---
+
+Portions of this software are derived from the Serde JSON project.
+
+Serde JSON is dual-licensed under the MIT License and the Apache License, Version 2.0. The MIT License has been chosen for this project.
+
+MIT License
+
+Copyright (c) 2014-2024, Serde Project and Contributors
+
+Source: https://github.com/serde-rs/json

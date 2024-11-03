@@ -131,6 +131,15 @@ fn handle_window_event(
     }
 }
 
+fn exit_app(
+    webview: &mut WebView,
+    control_flow: &mut ControlFlow,
+) {
+    let mut webview = Some(webview);
+    webview.take();
+    *control_flow = ControlFlow::Exit;
+}
+
 fn handle_app_event(
     event: AppEvent,
     window: &Window,
@@ -141,15 +150,8 @@ fn handle_app_event(
         AppEvent::RunJavascript(js) => run_javascript(webview, &js),
         AppEvent::CloseWindow => exit_app(webview, control_flow),
         AppEvent::MinimizeWindow => window.set_minimized(true),
-        AppEvent::MaximizeWindow => {
-            let is_maximized = window.is_maximized();
-            window.set_maximized(!is_maximized);
-        },
-        AppEvent::DragWindow => {
-            if let Err(e) = window.drag_window() {
-                eprintln!("Failed to drag window: {:?}", e);
-            }
-        },
+        AppEvent::MaximizeWindow => toggle_maximize(window),
+        AppEvent::DragWindow => drag(window),
         AppEvent::MouseDown(x, y) => handle_mouse_down(window, x, y),
     }
 }
@@ -160,6 +162,17 @@ fn run_javascript(
 ) {
     if let Err(err) = webview.evaluate_script(js) {
         eprintln!("Failed to evaluate JavaScript: {:?}", err);
+    }
+}
+
+fn toggle_maximize(window: &Window) {
+    let is_maximized = window.is_maximized();
+    window.set_maximized(!is_maximized);
+}
+
+fn drag(window: &Window) {
+    if let Err(err) = window.drag_window() {
+        eprintln!("Failed to drag window: {:?}", err);
     }
 }
 
@@ -175,15 +188,6 @@ fn handle_mouse_down(
         Border::Client | Border::NoWhere => {},
         _ => border_check.drag_resize_window(window),
     }
-}
-
-fn exit_app(
-    webview: &mut WebView,
-    control_flow: &mut ControlFlow,
-) {
-    let mut webview = Some(webview);
-    webview.take();
-    *control_flow = ControlFlow::Exit;
 }
 
 fn build_window(
