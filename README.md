@@ -4,11 +4,11 @@
 
 ## Why Choose Dry?
 
-- **Familiar Web Technologies**: Use HTML, CSS, and JavaScript to design interfaces for your Python apps.
-- **Concise API**: Instantiate a `wv = Webview()` object, configure a few settings, and call `wv.run()`—that’s it!
-- **Versatile Content**: Load content from HTTP/HTTPS sources or render HTML directly, all without a server.
-- **Customizable Windows**: Supports borderless windows and custom titlebars for a tailored UI experience—native window decorations are also available if you prefer.
-- **Small Footprint**: The binaries are around 700 KB, which reduce to 200 KB after compression with PyInstaller or UPX.
+- **Familiar Tech**: Use HTML, CSS, and JavaScript to design your UIs!
+- **Simple API**: wv = Webview(), set a few things up, wv.run()—that's it!
+- **Flexible Content**: Load via HTTP/HTTPS or render HTML without a server.
+- **Customizable**: Borderless windows with custom titlebars are supported.
+- **Small Size**: Binaries ~800 KB, compressed ~300 KB with PyInstaller/UPX.
 
 ## Installation
 
@@ -71,4 +71,3 @@ Dry is in its early stages and currently supports Windows. Linux and macOS suppo
 ## License
 
 Dry is distributed under the MIT License. For more details, see the [LICENSE](https://github.com/barradasotavio/dry/blob/master/LICENSE) file.
-

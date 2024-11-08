@@ -1,4 +1,5 @@
 from pathlib import Path
+
 from dry import Webview
 
 ICON_PATH = Path(__file__).parent / 'icon.ico'

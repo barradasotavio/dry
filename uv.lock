@@ -12,10 +12,10 @@ wheels = [
 
 [[package]]
 name = "dry-webview"
-version = "0.1.1"
+version = "0.2.0"
 source = { editable = "." }
 
-[package.dependency-groups]
+[package.dev-dependencies]
 dev = [
     { name = "maturin" },
     { name = "ruff" },
@@ -24,7 +24,7 @@ dev = [
 
 [package.metadata]
 
-[package.metadata.dependency-groups]
+[package.metadata.requires-dev]
 dev = [
     { name = "maturin", specifier = ">=1.7.4" },
     { name = "ruff", specifier = ">=0.7.1" },

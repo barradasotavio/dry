@@ -1,40 +1,9 @@
 from __future__ import annotations
 
 from re import match
-from typing import Callable, Mapping, TypeAlias, Union
+from typing import Any, Callable
 
 from . import dry
-
-DryType: TypeAlias = Union[
-    bool,
-    int,
-    float,
-    str,
-    list[bool],
-    list[int],
-    list[float],
-    list[str],
-    list[bool | int],
-    list[bool | float],
-    list[bool | str],
-    list[int | float],
-    list[int | str],
-    list[float | str],
-    list[bool | int | float],
-    list[bool | int | str],
-    list[bool | float | str],
-    list[int | float | str],
-    list[bool | int | float | str],
-    list['DryType'],
-    Mapping[bool, 'DryType'],
-    Mapping[int, 'DryType'],
-    Mapping[str, 'DryType'],
-    Mapping[bool | int, 'DryType'],
-    Mapping[bool | str, 'DryType'],
-    Mapping[int | str, 'DryType'],
-]
-
-DryFunction: TypeAlias = Callable[..., DryType]
 
 
 class Webview:
@@ -45,7 +14,7 @@ class Webview:
     _icon_path: str | None = None
     _html: str | None = None
     _url: str | None = None
-    _api: Mapping[str, DryFunction] | None = None
+    _api: dict[str, Callable[..., Any]] | None = None
     _dev_tools: bool | None = None
 
     def __init__(
@@ -56,12 +25,12 @@ class Webview:
         decorations: bool | None = True,
         icon_path: str | None = None,
         content: str = '<h1>Hello, World!</h1>',
-        api: Mapping[str, DryFunction] | None = None,
+        api: dict[str, Callable[..., Any]] | None = None,
         dev_tools: bool | None = False,
     ):
-        '''
+        """
         Initialize the webview window.
-        
+
         :param title: The title of the webview window.
         :param min_size: The minimum size of the webview window.
         :param size: The size of the webview window.
@@ -77,11 +46,11 @@ class Webview:
         :type decorations: bool | None
         :type icon_path: str | None
         :type content: str
-        :type api: Mapping[str, DryFunction] | None
-        :type dev_tools: bool
+        :type api: Mapping[str, Callable[..., Any]] | None
+        :type dev_tools: bool | None
 
         :return: Webview
-        '''
+        """
         self.title = title
         self.min_size = min_size
         self.size = size
@@ -133,36 +102,32 @@ class Webview:
         """
         self._size = width_and_height
 
-
     @property
-    def decorations(self) -> bool:
+    def decorations(self) -> bool | None:
         """
         Get whether window decorations are enabled.
         """
         return self._decorations
-    
+
     @decorations.setter
-    def decorations(self, decorations: bool) -> None:
+    def decorations(self, decorations: bool | None) -> None:
         """
         Set whether window decorations are enabled.
         """
         self._decorations = decorations
-    
+
     @property
     def icon_path(self) -> str | None:
         """
         Get the path to the icon of the webview window.
         """
         return self._icon_path
-    
+
     @icon_path.setter
     def icon_path(self, icon_path: str | None) -> None:
         """
         Set the path to the icon of the webview window (only .ico).
         """
-        if self._icon_path and not self._icon_path.endswith('.ico'):
-            raise ValueError('The icon file must be of type .ico')
-        self._icon_path = icon_path
 
     @property
     def content(self) -> str | None:
@@ -180,28 +145,28 @@ class Webview:
         self._url, self._html = (content, None) if is_url else (None, content)
 
     @property
-    def api(self) -> Mapping[str, DryFunction] | None:
+    def api(self) -> dict[str, Callable[..., Any]] | None:
         """
         Get the functions being passed down to the webview window.
         """
         return self._api
 
     @api.setter
-    def api(self, api: Mapping[str, DryFunction] | None) -> None:
+    def api(self, api: dict[str, Callable[..., Any]] | None) -> None:
         """
         Set the functions being passed down to the webview window.
         """
         self._api = api
 
     @property
-    def dev_tools(self) -> bool:
+    def dev_tools(self) -> bool | None:
         """
         Get whether the developer tools are enabled.
         """
         return self._dev_tools
 
     @dev_tools.setter
-    def dev_tools(self, dev_tools: bool) -> None:
+    def dev_tools(self, dev_tools: bool | None) -> None:
         """
         Set whether the developer tools are enabled.
         """
