@@ -198,18 +198,34 @@ fn build_window(
     decorations: bool,
     icon_path: Option<&str>,
 ) -> Result<Window, OsError> {
-    let min_size = PhysicalSize::new(min_size.0, min_size.1);
-    let size = PhysicalSize::new(size.0, size.1);
     let mut window_builder = WindowBuilder::new()
         .with_title(title)
-        .with_min_inner_size(min_size)
-        .with_inner_size(size)
+        .with_min_inner_size(PhysicalSize::new(min_size.0, min_size.1))
+        .with_inner_size(PhysicalSize::new(size.0, size.1))
         .with_decorations(decorations);
+
     if let Some(icon_path) = icon_path {
         let icon = load_icon(Path::new(icon_path));
         window_builder = window_builder.with_window_icon(icon);
     }
+
     let window = window_builder.build(event_loop)?;
+    let scale_factor = window.scale_factor();
+
+    if scale_factor != 1.0 {
+        let min_physical_size = PhysicalSize::new(
+            (min_size.0 as f64 * scale_factor) as u32,
+            (min_size.1 as f64 * scale_factor) as u32,
+        );
+        let physical_size = PhysicalSize::new(
+            (size.0 as f64 * scale_factor) as u32,
+            (size.1 as f64 * scale_factor) as u32,
+        );
+
+        window.set_min_inner_size(Some(min_physical_size));
+        window.set_inner_size(physical_size);
+    }
+
     Ok(window)
 }
 
