@@ -31,13 +31,21 @@ impl CallRequest {
             .ok_or(format!("Function {} not found.", self.function))?;
         Python::with_gil(|py| {
             let py_args = PyTuple::new(py, self.arguments.clone())?;
-            let py_result: PythonType =
-                py_func.call1(py, py_args)?.extract(py)?;
-            Ok(CallResponse {
-                call_id: self.call_id.clone(),
-                result: py_result,
-                error: None,
-            })
+            match py_func.call1(py, py_args) {
+                Ok(py_result) => Ok(CallResponse {
+                    call_id: self.call_id.clone(),
+                    result: py_result.extract(py)?,
+                    error: None,
+                }),
+                Err(py_err) => {
+                    py_err.display(py);
+                    Ok(CallResponse {
+                        call_id: self.call_id.clone(),
+                        result: PythonType::None(NoneType),
+                        error: Some(py_err.to_string()),
+                    })
+                },
+            }
         })
     }
 }
