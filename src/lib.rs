@@ -1,5 +1,6 @@
 mod api;
 mod events;
+mod types;
 mod webview;
 mod window;
 

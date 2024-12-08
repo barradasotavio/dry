@@ -38,22 +38,6 @@ def returns_bytes() -> bytes:
     return b'Hello, World!'
 
 
-def returns_complex() -> complex:
-    return 1 + 2j
-
-
-def returns_datetime() -> dt:
-    return dt.now()
-
-
-def returns_date():
-    return dt.now().date()
-
-
-def returns_time():
-    return dt.now().time()
-
-
 def returns_dict():
     return {'a': 1, 'b': 2, 'c': 3}
 
@@ -82,14 +66,14 @@ def returns_str():
     return 'Hello, World!'
 
 
+def raises_exception():
+    raise Exception('This is an exception')
+
+
 api: dict[str, Callable[..., Any]] = {
     'hello': hello,
     'returnsNone': returns_none,
     'returnsBytes': returns_bytes,
-    'returnsComplex': returns_complex,
-    'returnsDatetime': returns_datetime,
-    'returnsDate': returns_date,
-    'returnsTime': returns_time,
     'returnsDict': returns_dict,
     'returnsList': returns_list,
     'returnsTuple': returns_tuple,
@@ -97,6 +81,7 @@ api: dict[str, Callable[..., Any]] = {
     'returnsFloat': returns_float,
     'returnsInt': returns_int,
     'returnsStr': returns_str,
+    'raisesException': raises_exception,
 }
 
 if __name__ == '__main__':
