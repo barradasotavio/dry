@@ -4,6 +4,7 @@ mod window;
 use std::{collections::HashMap, path::Path};
 
 use pyo3::{prelude::*, types::PyFunction};
+use std::sync::{Mutex, OnceLock};
 use tao::{
     dpi::PhysicalSize,
     error::OsError,
@@ -19,9 +20,14 @@ use window::{
     WINDOW_EVENTS_JS, WINDOW_FUNCTIONS_JS,
 };
 
+static PYTHON_EVENT_SENDER: OnceLock<Mutex<Option<EventLoopProxy<AppEvent>>>> =
+    OnceLock::new();
+
 #[pymodule]
 fn dry(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add_function(wrap_pyfunction!(run, m)?)
+    m.add_function(wrap_pyfunction!(run, m)?)?;
+    m.add_function(wrap_pyfunction!(send_message, m)?)?;
+    Ok(())
 }
 
 #[pyfunction(signature=(
@@ -52,13 +58,14 @@ fn run(
         dev_tools.unwrap_or(false),
     );
 
-    let event_loop_instance =
-        EventLoopBuilder::<AppEvent>::with_user_event().build();
+    let event_loop = EventLoopBuilder::<AppEvent>::with_user_event().build();
 
-    let event_loop_proxy = event_loop_instance.create_proxy();
+    let proxy = event_loop.create_proxy();
+
+    PYTHON_EVENT_SENDER.get_or_init(|| Mutex::new(Some(proxy.clone())));
 
     let window = build_window(
-        &event_loop_instance,
+        &event_loop,
         title,
         min_size,
         size,
@@ -67,7 +74,7 @@ fn run(
     )
     .unwrap();
 
-    let ipc_handler = build_ipc_handler(api, event_loop_proxy);
+    let ipc_handler = build_ipc_handler(api, proxy);
 
     let webview = build_webview(
         &window,
@@ -80,7 +87,7 @@ fn run(
     )
     .unwrap();
 
-    run_event_loop(event_loop_instance, window, webview);
+    run_event_loop(event_loop, window, webview);
 }
 
 #[derive(Debug)]
@@ -91,6 +98,36 @@ enum AppEvent {
     MinimizeWindow,
     MaximizeWindow,
     CloseWindow,
+    FromPython(String),
+}
+
+#[pyfunction]
+fn send_message(message: &str) -> PyResult<()> {
+    if let Some(sender) = &*PYTHON_EVENT_SENDER
+        .get()
+        .ok_or_else(|| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
+                "Event loop not initialized",
+            )
+        })?
+        .lock()
+        .map_err(|_| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>("Lock poisoned")
+        })?
+    {
+        sender
+            .send_event(AppEvent::FromPython(message.to_string()))
+            .map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
+                    e.to_string(),
+                )
+            })?;
+        Ok(())
+    } else {
+        Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
+            "Event loop not running",
+        ))
+    }
 }
 
 fn run_event_loop(
@@ -153,6 +190,7 @@ fn handle_app_event(
         AppEvent::MaximizeWindow => toggle_maximize(window),
         AppEvent::DragWindow => drag(window),
         AppEvent::MouseDown(x, y) => handle_mouse_down(window, x, y),
+        AppEvent::FromPython(message) => println!("{}", message),
     }
 }
 

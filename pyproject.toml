@@ -26,11 +26,7 @@ dynamic = ["version"]
 features = ["pyo3/extension-module"]
 
 [tool.uv]
-dev-dependencies = [
-    "maturin>=1.7.4",
-    "ruff>=0.7.1",
-    "taskipy>=1.13.0",
-]
+dev-dependencies = ["maturin>=1.7.8", "ruff>=0.8.2", "taskipy>=1.14.1"]
 
 [tool.ruff]
 line-length = 79
@@ -44,7 +40,8 @@ quote-style = "single"
 [tool.taskipy.tasks]
 pre_format = "uv run ruff check --fix"
 format = "uv run ruff format"
-dev = "uv run maturin develop --uv && uv run"
+pre_dev = "uv run maturin develop --uv"
+dev = "uv run"
 pre_release = "cargo clean"
 release = "uv run maturin build --strip --release"
 preview = "uv run task release && uv run"
