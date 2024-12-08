@@ -38,20 +38,16 @@ class DragChecker {
 
 const dragChecker = new DragChecker();
 
-document.addEventListener('mousedown', (e) => {
-    const isMainMouseButton = e.button === 0;
-    if (!isMainMouseButton) { return; }
+document.querySelectorAll('[data-drag-region]').forEach(dragRegion => {
+    dragRegion.addEventListener('mousedown', (e) => {
+        const isMainMouseButton = e.button === 0;
+        if (!isMainMouseButton) { return; }
 
-    const isDragRegion = e.target.hasAttribute('data-drag-region');
-    if (!isDragRegion) {
-        window.messageMouseDown(e.clientX, e.clientY);
-        return;
-    }
-
-    const isDoubleClick = e.detail === 2;
-    if (isDoubleClick) {
-        window.toggleMaximize();
-    } else {
-        dragChecker.start(e.clientX, e.clientY);
-    }
+        const isDoubleClick = e.detail === 2;
+        if (isDoubleClick) {
+            window.toggleMaximize();
+        } else {
+            dragChecker.start(e.clientX, e.clientY);
+        }
+    });
 });

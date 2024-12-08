@@ -10,14 +10,14 @@ use tao::{
     error::OsError,
     event::{Event, StartCause, WindowEvent},
     event_loop::{ControlFlow, EventLoop, EventLoopBuilder, EventLoopProxy},
-    window::{Icon, Window, WindowBuilder},
+    window::{Icon, ResizeDirection, Window, WindowBuilder},
 };
 use wry::{http::Request, Error as WryError, WebView, WebViewBuilder};
 
 use api::{handle_api_requests, API_JS};
 use window::{
-    handle_window_requests, run_border_check, Border, WINDOW_BORDERS_JS,
-    WINDOW_EVENTS_JS, WINDOW_FUNCTIONS_JS,
+    handle_window_requests, WINDOW_BORDERS_JS, WINDOW_EVENTS_JS,
+    WINDOW_FUNCTIONS_JS,
 };
 
 static PYTHON_EVENT_SENDER: OnceLock<Mutex<Option<EventLoopProxy<AppEvent>>>> =
@@ -93,11 +93,11 @@ fn run(
 #[derive(Debug)]
 enum AppEvent {
     RunJavascript(String),
-    MouseDown(u32, u32),
     DragWindow,
     MinimizeWindow,
     MaximizeWindow,
     CloseWindow,
+    ResizeWindow(ResizeDirection),
     FromPython(String),
 }
 
@@ -189,7 +189,11 @@ fn handle_app_event(
         AppEvent::MinimizeWindow => window.set_minimized(true),
         AppEvent::MaximizeWindow => toggle_maximize(window),
         AppEvent::DragWindow => drag(window),
-        AppEvent::MouseDown(x, y) => handle_mouse_down(window, x, y),
+        AppEvent::ResizeWindow(direction) => {
+            if let Err(err) = window.drag_resize_window(direction) {
+                eprintln!("Failed to resize window: {:?}", err);
+            }
+        },
         AppEvent::FromPython(message) => println!("{}", message),
     }
 }
@@ -211,20 +215,6 @@ fn toggle_maximize(window: &Window) {
 fn drag(window: &Window) {
     if let Err(err) = window.drag_window() {
         eprintln!("Failed to drag window: {:?}", err);
-    }
-}
-
-fn handle_mouse_down(
-    window: &Window,
-    x: u32,
-    y: u32,
-) {
-    let border_check =
-        run_border_check(window.inner_size(), x, y, window.scale_factor());
-
-    match border_check {
-        Border::Client | Border::NoWhere => {},
-        _ => border_check.drag_resize_window(window),
     }
 }
 
