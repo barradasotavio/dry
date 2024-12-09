@@ -10,7 +10,7 @@ with open(HTML_PATH, encoding='utf-8') as f:
 
 if __name__ == '__main__':
     wv = Webview()
-    wv.title = 'Hello World'
+    wv.title = 'Titlebar Example'
     wv.size = wv.min_size = (1080, 720)
     wv.decorations = False
     wv.icon_path = ICON_PATH.as_posix()

@@ -41,7 +41,7 @@ class Webview:
     _url: str | None = None
     _api: dict[str, Callable[..., Any]] | None = None
     _dev_tools: bool = False
-    _user_data_folder: str = str(Path(gettempdir()) / _title)
+    _user_data_folder: str | None = None
 
     @property
     def title(self) -> str:
@@ -161,6 +161,8 @@ class Webview:
         """
         Get the user data folder path.
         """
+        if self._user_data_folder is None:
+            self._user_data_folder = str(Path(gettempdir()) / self.title)
         return self._user_data_folder
 
     @user_data_folder.setter
