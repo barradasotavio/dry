@@ -28,7 +28,7 @@ features = ["pyo3/extension-module"]
 dev-dependencies = ["maturin>=1.7.8", "ruff>=0.8.2", "taskipy>=1.14.1"]
 
 [tool.ruff]
-line-length = 79
+line-length = 88
 
 [tool.ruff.lint]
 extend-select = ["I001"]

@@ -4,10 +4,10 @@
 
 ## Why?
 
-- **Familiar Tech**: Use HTML, CSS and JS to design your UIs!
-- **Flexible Content**: Render from an HTML string or from a URL.
-- **Customizable**: Support for borderless windows with custom titlebars!
-- **Callbacks**: Interact with Python from JavaScript!
+-   **Familiar Tech**: Use HTML, CSS and JS to design your UIs!
+-   **Flexible Content**: Render from an HTML string or from a URL.
+-   **Customizable**: Support for borderless windows with custom titlebars!
+-   **Callbacks**: Interact with Python from JavaScript!
 
 ## Installation
 
@@ -33,15 +33,25 @@ wv.run()
 
 For more examples, check out the [examples directory](https://github.com/barradasotavio/dry/tree/master/examples).
 
-
 ## Features
 
 ### Flexible Content
 
-The `Webview` class supports loading content from a string containing HTML or from a URL. You could, for example, compile your HTML, CSS and JS into a single file and load it into the webview.
+The `Webview` class supports loading content from a string containing HTML, from a URL or using the file URI scheme. You could, for example, compile your HTML, CSS and JS into a single file and load it into the webview.
 
 ```python
-wv.content = "<h1>Hello, World!</h1>" or "http://localhost:8000"
+from dry import Webview
+from pathlib import Path
+
+# Using file URI scheme
+html = Path(__file__).parent / "index.html"
+wv.content = html.resolve().as_uri()
+
+# Using a URL
+wv.content = "http://localhost:8000"
+
+# Using a string
+wv.content = "<h1>Hello, World!</h1>"
 ```
 
 If your UI needs to come from a server, know that `wv.run()` blocks the main thread. Consider running the server from a separate thread (preferably a daemon one, which will shutdown along with the main thread).
@@ -139,18 +149,17 @@ Be aware of the supported data types for function arguments and return values:
 
 The `Webview` class has a few options you can set through its properties:
 
-| Property         | Description                                                                              |
-| ---------------- | ---------------------------------------------------------------------------------------- |
-| title            | The window title. Defaults to 'My Dry Webview'.                                           |
-| min_size         | Minimum window dimensions (width, height).                                                |
-| size             | Initial window dimensions (width, height).                                                |
-| decorations      | Whether to show window decorations (title bar, borders).                                  |
-| icon_path        | Path to the window icon file (.ico format).                                              |
-| content          | HTML content or URL to display in the window.                                            |
-| api              | JavaScript-accessible Python functions.                                                   |
-| dev_tools        | Whether to enable developer tools.                                                        |
-| user_data_folder | Path to store user data. Defaults to temp folder.                                         |
-
+| Property         | Description                                              |
+| ---------------- | -------------------------------------------------------- |
+| title            | The window title. Defaults to 'My Dry Webview'.          |
+| min_size         | Minimum window dimensions (width, height).               |
+| size             | Initial window dimensions (width, height).               |
+| decorations      | Whether to show window decorations (title bar, borders). |
+| icon_path        | Path to the window icon file (.ico format).              |
+| content          | HTML string or file:///, http:// and https:// locations  |
+| api              | JavaScript-accessible Python functions.                  |
+| dev_tools        | Whether to enable developer tools.                       |
+| user_data_folder | Path to store user data. Defaults to temp folder.        |
 
 ## Current Status
 
@@ -158,8 +167,8 @@ Dry is in its early stages and currently supports Windows only. Expect ongoing d
 
 ## Platform Compatibility
 
-| Platform   | Status    |
-| ---------- | --------- |
+| Platform   | Status     |
+| ---------- | ---------- |
 | Windows 11 | ✅ Tested  |
 | Linux      | ❌ Not Yet |
 | macOS      | ❌ Not Yet |
@@ -168,9 +177,9 @@ Dry is in its early stages and currently supports Windows only. Expect ongoing d
 
 | Python Version | Status    |
 | -------------- | --------- |
-| CPython 3.11   | ✅ Tested  |
-| CPython 3.12   | ✅ Tested  |
-| CPython 3.13   | ✅ Tested  |
+| CPython 3.11   | ✅ Tested |
+| CPython 3.12   | ✅ Tested |
+| CPython 3.13   | ✅ Tested |
 
 ## License
 

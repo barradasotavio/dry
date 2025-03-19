@@ -123,10 +123,16 @@ class Webview:
     @content.setter
     def content(self, content: str) -> None:
         """
-        Set the content of the webview window, either an HTML or a URL.
+        Set the content of the webview window, either an HTML, a URL, or a file path.
         """
         is_url = bool(match(r'https?://[a-z0-9.-]+', content))
-        self._url, self._html = (content, None) if is_url else (None, content)
+        is_file = content.startswith('file:///')
+        if is_url:
+            self._url, self._html = content, None
+        elif is_file:
+            self._url, self._html = content, None
+        else:
+            self._url, self._html = None, content
 
     @property
     def api(self) -> dict[str, Callable[..., Any]] | None:

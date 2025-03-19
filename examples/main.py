@@ -8,8 +8,7 @@ from dry import Webview
 ICON_PATH = Path(__file__).parent / 'icon.ico'
 HTML_PATH = Path(__file__).parent / 'main.html'
 
-with open(HTML_PATH, encoding='utf-8') as f:
-    HTML = f.read()
+HTML_URL = HTML_PATH.resolve().as_uri()
 
 
 def hello(name: str) -> str:
@@ -89,7 +88,7 @@ if __name__ == '__main__':
     wv.title = 'Hello World'
     wv.size = wv.min_size = (1080, 720)
     wv.icon_path = ICON_PATH.as_posix()
-    wv.content = HTML
+    wv.content = HTML_URL
     wv.api = api
     wv.dev_tools = True
     wv.run()
