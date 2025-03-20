@@ -126,11 +126,14 @@ class Webview:
         Set the content of the webview window, either an HTML, a URL, or a file path.
         """
         is_url = bool(match(r'https?://[a-z0-9.-]+', content))
-        is_file = content.startswith('file:///')
         if is_url:
             self._url, self._html = content, None
-        elif is_file:
-            self._url, self._html = content, None
+        elif Path(content).is_file():
+            # For local files, use a custom protocol with the full path
+            # This avoids issues with file:// URIs in Wry
+            file_path = Path(content).resolve().as_posix()
+            self._url = f"localfile://{file_path}"
+            self._html = None
         else:
             self._url, self._html = None, content
 

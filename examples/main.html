@@ -1,135 +1,268 @@
 <html>
+    <head>
+        <style>
+            html {
+                font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
+            }
 
-<head>
-    <style>
-        html {
-            font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
-        }
+            * {
+                padding: 0;
+                margin: 0;
+                box-sizing: border-box;
+            }
 
-        * {
-            padding: 0;
-            margin: 0;
-            box-sizing: border-box;
-        }
+            @media (prefers-color-scheme: dark) {
+                body {
+                    background-color: #1a1a1a;
+                    color: #ffffff;
+                }
 
-        @media (prefers-color-scheme: dark) {
+                body::before {
+                    content: '';
+                    position: absolute;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 5rem;
+                    background: linear-gradient(to bottom, #202020, #1a1a1a);
+                }
+
+                button {
+                    background-color: #333;
+                    color: #ffffff;
+                    border: 1px solid #555;
+                }
+
+                button:hover {
+                    background-color: #444;
+                }
+
+                #result {
+                    background-color: #2a2a2a;
+                    border: 1px solid #444;
+                }
+            }
+
+            @media (prefers-color-scheme: light) {
+                body {
+                    background-color: #ffffff;
+                    color: #1a1a1a;
+                }
+
+                body::before {
+                    content: '';
+                    position: absolute;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 5rem;
+                    background: linear-gradient(to bottom, #f3f3f3, #ffffff);
+                }
+
+                button {
+                    background-color: #f5f5f5;
+                    color: #1a1a1a;
+                    border: 1px solid #ddd;
+                }
+
+                button:hover {
+                    background-color: #eee;
+                }
+
+                #result {
+                    background-color: #fff;
+                    border: 1px solid #ccc;
+                }
+            }
+
             body {
-                background-color: #1a1a1a;
-                color: #ffffff;
+                width: 100vw;
+                height: 100vh;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                flex-direction: column;
+                gap: 1rem;
+                transition: background-color 0.3s ease, color 0.3s ease;
+                position: relative;
             }
 
-            body::before {
-                content: '';
-                position: absolute;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 5rem;
-                background: linear-gradient(to bottom, #202020, #1a1a1a);
-            }
-
-            input,
             button {
-                background-color: #333;
-                color: #ffffff;
-                border: 1px solid #555;
+                padding: 0.5rem 1rem;
+                border-radius: 4px;
+                font-size: 1rem;
+                transition: all 0.2s ease;
+                cursor: pointer;
             }
 
-            input::placeholder {
-                color: #aaa;
+            button:active {
+                transform: scale(0.98);
             }
 
-            button:hover {
-                background-color: #444;
-            }
-        }
-
-        @media (prefers-color-scheme: light) {
-            body {
-                background-color: #ffffff;
-                color: #1a1a1a;
-            }
-
-            body::before {
-                content: '';
-                position: absolute;
-                top: 0;
-                left: 0;
+            #result {
+                padding: 15px;
+                border-radius: 8px;
                 width: 100%;
-                height: 5rem;
-                background: linear-gradient(to bottom, #F3F3F3, #ffffff);
+                height: 60px;
+                max-width: 600px;
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+                overflow-wrap: break-word;
+                display: flex;
+                align-items: center;
             }
 
-            input,
-            button {
-                background-color: #f5f5f5;
-                color: #1a1a1a;
-                border: 1px solid #ddd;
+            h1 {
+                color: #007bff;
+                margin-bottom: 20px;
             }
 
-            input::placeholder {
-                color: #666;
+            #buttons {
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+                gap: 15px;
+                width: 100%;
+                max-width: 600px;
+            }
+        </style>
+    </head>
+
+    <body>
+        <div id="buttons">
+            <button onclick="testHello()">Test Hello</button>
+            <button onclick="testReturnsNone()">Test Returns None</button>
+            <button onclick="testReturnsBytes()">Test Returns Bytes</button>
+            <button onclick="testReturnsDict()">Test Returns Dict</button>
+            <button onclick="testReturnsList()">Test Returns List</button>
+            <button onclick="testReturnsTuple()">Test Returns Tuple</button>
+            <button onclick="testReturnsSet()">Test Returns Set</button>
+            <button onclick="testReturnsFloat()">Test Returns Float</button>
+            <button onclick="testReturnsInt()">Test Returns Int</button>
+            <button onclick="testReturnsStr()">Test Returns Str</button>
+            <button onclick="testRaisesException()">Test Exception</button>
+        </div>
+        <div id="result"></div>
+
+        <script>
+            async function testHello() {
+                try {
+                    const data = await window.api.hello('User');
+                    document.getElementById('result').innerHTML =
+                        JSON.stringify(data, null, 2);
+                } catch (error) {
+                    document.getElementById('result').innerHTML =
+                        'Error: ' + error.message;
+                }
             }
 
-            button:hover {
-                background-color: #eee;
-            }
-        }
-
-        body {
-            width: 100vw;
-            height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            flex-direction: column;
-            gap: 1rem;
-            transition: background-color 0.3s ease, color 0.3s ease;
-            position: relative;
-        }
-
-        input,
-        button {
-            padding: 0.5rem 1rem;
-            border-radius: 4px;
-            font-size: 1rem;
-            transition: all 0.2s ease;
-        }
-
-        button {
-            cursor: pointer;
-        }
-
-        button:active {
-            transform: scale(0.98);
-        }
-
-        #output {
-            font-weight: 500;
-            font-size: 2rem;
-        }
-    </style>
-</head>
-
-<body>
-    <input type="text" id="hello" placeholder="Enter your name" />
-    <button onclick="sayHello()">Say Hello</button>
-    <div><span id="output"></span></div>
-    <script>
-        async function sayHello() {
-            const name = document.getElementById("hello").value;
-
-            if (!name) {
-                alert("Oh, I didn't get your name!");
-                document.getElementById("hello").focus();
-                return;
+            async function testReturnsNone() {
+                try {
+                    const data = await window.api.returnsNone();
+                    document.getElementById('result').innerHTML =
+                        JSON.stringify(data, null, 2);
+                } catch (error) {
+                    document.getElementById('result').innerHTML =
+                        'Error: ' + error.message;
+                }
             }
 
-            const response = await window.api.hello(name);
-            document.getElementById("output").innerText = response;
+            async function testReturnsBytes() {
+                try {
+                    const data = await window.api.returnsBytes();
+                    document.getElementById('result').innerHTML =
+                        JSON.stringify(data, null, 2);
+                } catch (error) {
+                    document.getElementById('result').innerHTML =
+                        'Error: ' + error.message;
+                }
+            }
 
-        }
-    </script>
-</body>
+            async function testReturnsDict() {
+                try {
+                    const data = await window.api.returnsDict();
+                    document.getElementById('result').innerHTML =
+                        JSON.stringify(data, null, 2);
+                } catch (error) {
+                    document.getElementById('result').innerHTML =
+                        'Error: ' + error.message;
+                }
+            }
 
+            async function testReturnsList() {
+                try {
+                    const data = await window.api.returnsList();
+                    document.getElementById('result').innerHTML =
+                        JSON.stringify(data, null, 2);
+                } catch (error) {
+                    document.getElementById('result').innerHTML =
+                        'Error: ' + error.message;
+                }
+            }
+
+            async function testReturnsTuple() {
+                try {
+                    const data = await window.api.returnsTuple();
+                    document.getElementById('result').innerHTML =
+                        JSON.stringify(data, null, 2);
+                } catch (error) {
+                    document.getElementById('result').innerHTML =
+                        'Error: ' + error.message;
+                }
+            }
+
+            async function testReturnsSet() {
+                try {
+                    const data = await window.api.returnsSet();
+                    document.getElementById('result').innerHTML =
+                        JSON.stringify(data, null, 2);
+                } catch (error) {
+                    document.getElementById('result').innerHTML =
+                        'Error: ' + error.message;
+                }
+            }
+
+            async function testReturnsFloat() {
+                try {
+                    const data = await window.api.returnsFloat();
+                    document.getElementById('result').innerHTML =
+                        JSON.stringify(data, null, 2);
+                } catch (error) {
+                    document.getElementById('result').innerHTML =
+                        'Error: ' + error.message;
+                }
+            }
+
+            async function testReturnsInt() {
+                try {
+                    const data = await window.api.returnsInt();
+                    document.getElementById('result').innerHTML =
+                        JSON.stringify(data, null, 2);
+                } catch (error) {
+                    document.getElementById('result').innerHTML =
+                        'Error: ' + error.message;
+                }
+            }
+
+            async function testReturnsStr() {
+                try {
+                    const data = await window.api.returnsStr();
+                    document.getElementById('result').innerHTML =
+                        JSON.stringify(data, null, 2);
+                } catch (error) {
+                    document.getElementById('result').innerHTML =
+                        'Error: ' + error.message;
+                }
+            }
+
+            async function testRaisesException() {
+                try {
+                    const data = await window.api.raisesException();
+                    document.getElementById('result').innerHTML =
+                        JSON.stringify(data, null, 2);
+                } catch (error) {
+                    document.getElementById('result').innerHTML =
+                        'Error: ' + error.message;
+                }
+            }
+        </script>
+    </body>
 </html>

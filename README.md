@@ -37,15 +37,15 @@ For more examples, check out the [examples directory](https://github.com/barrada
 
 ### Flexible Content
 
-The `Webview` class supports loading content from a string containing HTML, from a URL or using the file URI scheme. You could, for example, compile your HTML, CSS and JS into a single file and load it into the webview.
+The `Webview` class supports loading content from a string containing HTML, from a URL or using a filepath as a string. You could, for example, compile your HTML, CSS and JS into a single file and load it into the webview.
 
 ```python
 from dry import Webview
 from pathlib import Path
 
-# Using file URI scheme
+# Using file path as a string
 html = Path(__file__).parent / "index.html"
-wv.content = html.resolve().as_uri()
+wv.content = html.as_posix()
 
 # Using a URL
 wv.content = "http://localhost:8000"
@@ -149,17 +149,17 @@ Be aware of the supported data types for function arguments and return values:
 
 The `Webview` class has a few options you can set through its properties:
 
-| Property         | Description                                              |
-| ---------------- | -------------------------------------------------------- |
-| title            | The window title. Defaults to 'My Dry Webview'.          |
-| min_size         | Minimum window dimensions (width, height).               |
-| size             | Initial window dimensions (width, height).               |
-| decorations      | Whether to show window decorations (title bar, borders). |
-| icon_path        | Path to the window icon file (.ico format).              |
-| content          | HTML string or file:///, http:// and https:// locations  |
-| api              | JavaScript-accessible Python functions.                  |
-| dev_tools        | Whether to enable developer tools.                       |
-| user_data_folder | Path to store user data. Defaults to temp folder.        |
+| Property         | Description                                                         |
+| ---------------- | ------------------------------------------------------------------- |
+| title            | The window title. Defaults to 'My Dry Webview'.                     |
+| min_size         | Minimum window dimensions (width, height).                          |
+| size             | Initial window dimensions (width, height).                          |
+| decorations      | Whether to show window decorations (title bar, borders).            |
+| icon_path        | Path to the window icon file (.ico format).                         |
+| content          | HTML string or filepath as a string, http:// and https:// locations |
+| api              | JavaScript-accessible Python functions.                             |
+| dev_tools        | Whether to enable developer tools.                                  |
+| user_data_folder | Path to store user data. Defaults to temp folder.                   |
 
 ## Current Status
 
