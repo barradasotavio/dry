@@ -1,7 +1,7 @@
 use std::path::Path;
 use tao::window::ResizeDirection;
 use tao::{
-  dpi::PhysicalSize,
+  dpi::LogicalSize,
   error::OsError,
   event_loop::{EventLoop, EventLoopProxy},
   window::{Icon, Window, WindowBuilder},
@@ -17,8 +17,8 @@ pub fn build_window(
   event_loop: &EventLoop<AppEvent>, title: String, min_size: (u32, u32),
   size: (u32, u32), decorations: bool, icon_path: Option<String>,
 ) -> Result<Window, OsError> {
-  let min_size = PhysicalSize::new(min_size.0, min_size.1);
-  let size = PhysicalSize::new(size.0, size.1);
+  let min_size = LogicalSize::new(min_size.0, min_size.1);
+  let size = LogicalSize::new(size.0, size.1);
   let mut window_builder = WindowBuilder::new()
     .with_title(title)
     .with_min_inner_size(min_size)
