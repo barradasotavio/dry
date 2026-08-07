@@ -73,3 +73,6 @@ docs/_build/
 
 # Claude Code (personal, per-machine settings)
 .claude/settings.local.json
+
+# Claude Code (worktrees for parallel work)
+.claude/worktrees/
