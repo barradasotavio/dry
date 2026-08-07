@@ -40,6 +40,23 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
+      - name: Install uv
+        # setup-uv publishes no floating major tag past v7, so pin the release.
+        uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: true
+
+      # Cheap and independent of the extension module, so it runs first and
+      # fails fast. The stub in dry/dry.pyi stands in for the compiled module.
+      - name: Type check with Pyrefly
+        run: >-
+          uvx pyrefly@${{ env.PYREFLY_VERSION }} check
+          --preset strict
+          --python-version ${{ env.PYTHON_VERSION }}
+          --search-path .
+          --skip-interpreter-query
+          dry examples
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
@@ -49,26 +66,11 @@ jobs:
       - name: Run the Rust tests
         run: cargo test --locked
 
-      - name: Install uv
-        # setup-uv publishes no floating major tag past v7, so pin the release.
-        uses: astral-sh/setup-uv@v9.0.0
-        with:
-          enable-cache: true
-
       - name: Build and install the Webview extension module
         run: uv sync --locked --no-dev --python '${{ steps.python.outputs.python-path }}'
 
       - name: Import the Webview from Python
         run: uv run --no-sync python -c 'from dry import Webview; Webview()'
-
-      - name: Type check with Pyrefly
-        run: >-
-          uvx pyrefly@${{ env.PYREFLY_VERSION }} check
-          --preset strict
-          --python-version ${{ env.PYTHON_VERSION }}
-          --search-path .
-          --skip-interpreter-query
-          dry examples
 
   pyright:
     # Pyright is the compatibility gate: users get it inside their editors, so a
