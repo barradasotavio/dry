@@ -1,7 +1,7 @@
 use pyo3::{
+  Borrowed, FromPyObject, IntoPyObject, PyAny, PyErr, Python,
   exceptions::PyTypeError,
   types::{PyAnyMethods, PyNone, PySet, PyTypeMethods},
-  Borrowed, Bound, FromPyObject, IntoPyObject, PyAny, PyResult, Python,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -30,8 +30,10 @@ impl Hash for FloatType {
 #[derive(Serialize, Deserialize, Clone)]
 pub struct NoneType;
 
-impl<'py> FromPyObject<'py> for NoneType {
-  fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for NoneType {
+  type Error = PyErr;
+
+  fn extract(ob: Borrowed<'a, 'py, PyAny>) -> Result<Self, Self::Error> {
     if ob.is_none() {
       Ok(NoneType)
     } else {
@@ -56,13 +58,18 @@ impl<'py> IntoPyObject<'py> for NoneType {
 #[derive(Serialize, Deserialize, IntoPyObject, Clone)]
 pub struct SetType<T>(Vec<T>);
 
-impl<'py, T: FromPyObject<'py>> FromPyObject<'py> for SetType<T> {
-  fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
+impl<'a, 'py, T> FromPyObject<'a, 'py> for SetType<T>
+where
+  T: for<'x> FromPyObject<'x, 'py>,
+{
+  type Error = PyErr;
+
+  fn extract(ob: Borrowed<'a, 'py, PyAny>) -> Result<Self, Self::Error> {
     if ob.get_type().name()? == "set" {
-      let set = ob.downcast::<PySet>()?;
+      let set = ob.cast::<PySet>()?;
       let mut items = Vec::new();
       for item in set.try_iter()? {
-        items.push(item?.extract()?);
+        items.push(item?.extract().map_err(Into::into)?);
       }
       Ok(SetType(items))
     } else {

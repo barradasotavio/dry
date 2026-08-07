@@ -29,13 +29,13 @@ pub fn run_event_loop(
     match event {
       Event::NewEvents(StartCause::Init) => {
         println!("{} started.", window.title());
-      }
+      },
       Event::WindowEvent { event, .. } => {
         handle_window_event(event, &mut webview, control_flow)
-      }
+      },
       Event::UserEvent(app_event) => {
         handle_app_event(app_event, &window, &mut webview, control_flow)
-      }
+      },
       _ => (),
     }
   });
@@ -64,7 +64,7 @@ fn handle_app_event(
       if let Err(err) = window.drag_resize_window(direction) {
         eprintln!("Failed to resize window: {:?}", err);
       }
-    }
+    },
     AppEvent::FromPython(message) => handle_python_event(&message),
   }
 }

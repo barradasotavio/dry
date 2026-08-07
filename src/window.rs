@@ -53,7 +53,7 @@ pub fn handle_window_requests(request_body: &String, proxy: &EventLoopProxy<AppE
     None => {
       eprintln!("Invalid request: {}", request_body);
       return;
-    }
+    },
   };
 
   let result = match action {
@@ -74,14 +74,14 @@ pub fn handle_window_requests(request_body: &String, proxy: &EventLoopProxy<AppE
         _ => {
           eprintln!("Invalid resize direction");
           return;
-        }
+        },
       };
       proxy.send_event(AppEvent::ResizeWindow(direction))
-    }
+    },
     _ => {
       eprintln!("Invalid window control: {}", action);
       return;
-    }
+    },
   };
 
   if let Err(e) = result {

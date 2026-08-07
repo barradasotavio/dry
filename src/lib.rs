@@ -8,11 +8,11 @@ use pyo3::{prelude::*, types::PyFunction};
 use std::{collections::HashMap, sync::Mutex};
 use tao::event_loop::EventLoopBuilder;
 
-use events::{run_event_loop, AppEvent, PROXY};
+use events::{AppEvent, PROXY, run_event_loop};
 use webview::{build_ipc_handler, build_webview};
 use window::build_window;
 
-#[pymodule]
+#[pymodule(gil_used = true)]
 fn dry(m: &Bound<'_, PyModule>) -> PyResult<()> {
   m.add_function(wrap_pyfunction!(run, m)?)?;
   m.add_function(wrap_pyfunction!(send_event, m)?)?;

@@ -5,18 +5,18 @@ use std::{
   path::{Path, PathBuf},
 };
 
-use pyo3::{types::PyFunction, Py};
+use pyo3::{Py, types::PyFunction};
 use tao::{event_loop::EventLoopProxy, window::Window};
 use wry::{
-  http::{header::CONTENT_TYPE, response::Response, Request},
   Error as WryError, WebContext, WebView, WebViewBuilder,
+  http::{Request, header::CONTENT_TYPE, response::Response},
 };
 
 use crate::{
-  api::{handle_api_requests, API_JS},
+  api::{API_JS, handle_api_requests},
   events::AppEvent,
   window::{
-    handle_window_requests, WINDOW_BORDERS_JS, WINDOW_EVENTS_JS, WINDOW_FUNCTIONS_JS,
+    WINDOW_BORDERS_JS, WINDOW_EVENTS_JS, WINDOW_FUNCTIONS_JS, handle_window_requests,
   },
 };
 
@@ -28,7 +28,7 @@ pub fn build_webview(
   let data_directory = PathBuf::from(udf);
   let mut web_context = WebContext::new(Some(data_directory));
 
-  let mut builder = WebViewBuilder::with_web_context(&mut web_context)
+  let mut builder = WebViewBuilder::new_with_web_context(&mut web_context)
     .with_initialization_script(WINDOW_FUNCTIONS_JS)
     .with_initialization_script(WINDOW_EVENTS_JS)
     .with_devtools(dev_tools)
@@ -48,19 +48,17 @@ pub fn build_webview(
       if url.starts_with("localfile://") {
         let file_path = url.trim_start_matches("localfile://").to_string();
 
-        builder = builder.with_custom_protocol(
-          "localfile".into(),
-          move |_webview_id, _request| {
+        builder = builder
+          .with_custom_protocol("localfile".into(), move |_webview_id, _request| {
             handle_file_request(&file_path)
-          },
-        );
+          });
 
         builder = builder.with_url("localfile://localhost/");
         builder.build(window)?
       } else {
         builder.with_url(url).build(window)?
       }
-    }
+    },
     (None, None) => panic!("No html or url provided."),
   };
 
@@ -104,10 +102,10 @@ pub fn build_ipc_handler(
       return;
     }
 
-    if let Some(api) = &api {
-      if let Err(err) = handle_api_requests(request_body, api, &event_loop_proxy) {
-        eprintln!("{:?}", err);
-      }
+    if let Some(api) = &api
+      && let Err(err) = handle_api_requests(request_body, api, &event_loop_proxy)
+    {
+      eprintln!("{:?}", err);
     }
   }
 }

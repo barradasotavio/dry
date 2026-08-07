@@ -24,8 +24,8 @@ dynamic = ["version"]
 [tool.maturin]
 features = ["pyo3/extension-module"]
 
-[tool.uv]
-dev-dependencies = ["maturin>=1.7.8", "ruff>=0.8.2", "taskipy>=1.14.1"]
+[dependency-groups]
+dev = ["maturin>=1.7.8", "ruff>=0.8.2", "taskipy>=1.14.1"]
 
 [tool.ruff]
 line-length = 88
