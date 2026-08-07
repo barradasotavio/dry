@@ -1,26 +1,35 @@
+from os import PathLike
 from pathlib import Path
-from re import match
 from tempfile import gettempdir
 from typing import Any, Callable
 
 from . import dry
+
+StrPath = str | PathLike[str]
+
+# The prefix the Rust side reads a Root off. Everything after it is the absolute
+# path of the directory to serve.
+_ROOT_URL_PREFIX = 'localfile://'
 
 
 class Webview:
     """
     A class that provides a simple interface for creating and managing a webview window.
 
-    The Webview class allows you to create a desktop application window that can display
-    web content, either from a URL or HTML string. It provides controls for window
-    properties like size, title, decorations, and developer tools.
+    The Webview renders exactly one Content, declared as exactly one of three
+    mutually exclusive modes: an HTML string (`html`), a URL (`url`), or a Root
+    (`root`) — a local directory served to the Webview so that relative assets
+    resolve. Declaring more than one, or none, raises.
 
     Attributes:
         title (str): The window title. Defaults to 'My Dry Webview'.
         min_size (tuple[int, int]): Minimum window dimensions (width, height).
         size (tuple[int, int]): Initial window dimensions (width, height).
         decorations (bool): Whether to show window decorations (title bar, borders).
-        icon_path (str | None): Path to the window icon file (.ico format).
-        content (str): HTML content or URL to display in the window.
+        icon_path (str | PathLike[str] | None): Path to the window icon (.ico format).
+        html (str | None): An HTML string to render.
+        url (str | None): A URL to load.
+        root (Path | None): A local directory to serve, starting at its index.html.
         api (dict[str, Callable]): JavaScript-accessible Python functions.
         dev_tools (bool): Whether to enable developer tools.
         user_data_folder (str): Path to store user data. Defaults to temp folder.
@@ -28,7 +37,11 @@ class Webview:
     Example:
         >>> wv = Webview()
         >>> wv.title = "My App"
-        >>> wv.content = "<h1>Hello World</h1>"
+        >>> wv.html = "<h1>Hello World</h1>"
+        >>> wv.run()
+
+        >>> wv = Webview()
+        >>> wv.root = "./dist"
         >>> wv.run()
     """
 
@@ -39,6 +52,7 @@ class Webview:
     _icon_path: str | None = None
     _html: str | None = None
     _url: str | None = None
+    _root: Path | None = None
     _api: dict[str, Callable[..., Any]] | None = None
     _dev_tools: bool = False
     _user_data_folder: str | None = None
@@ -107,35 +121,98 @@ class Webview:
         return self._icon_path
 
     @icon_path.setter
-    def icon_path(self, icon_path: str | None) -> None:
+    def icon_path(self, icon_path: StrPath | None) -> None:
         """
         Set the path to the icon of the webview window (only .ico).
         """
-        self._icon_path = icon_path
+        self._icon_path = None if icon_path is None else Path(icon_path).as_posix()
+
+    def _refuse_second_mode(self, mode: str) -> None:
+        """
+        Refuse a Content mode when another one is already declared.
+        """
+        declared = {
+            'html': self._html is not None,
+            'url': self._url is not None,
+            'root': self._root is not None,
+        }
+        conflict = next(
+            (other for other, is_set in declared.items() if is_set and other != mode),
+            None,
+        )
+        if conflict is not None:
+            raise ValueError(
+                f'Content is already declared as {conflict}, so it cannot also be '
+                f'declared as {mode}. A Webview renders exactly one of html, url or '
+                f'root. Set webview.{conflict} = None first.'
+            )
 
     @property
-    def content(self) -> str | None:
+    def html(self) -> str | None:
         """
-        Get the content of the webview window.
+        Get the HTML string the webview window renders, if that is its Content.
         """
-        return self._html or self._url or '<h1>Hello, World!</h1>'
+        return self._html
 
-    @content.setter
-    def content(self, content: str) -> None:
+    @html.setter
+    def html(self, html: str | None) -> None:
         """
-        Set the content of the webview window, either an HTML, a URL, or a file path.
+        Render an HTML string. Refused if a url or a root is already declared.
         """
-        is_url = bool(match(r'https?://[a-z0-9.-]+', content))
-        if is_url:
-            self._url, self._html = content, None
-        elif Path(content).is_file():
-            # For local files, use a custom protocol with the full path
-            # This avoids issues with file:// URIs in Wry
-            file_path = Path(content).resolve().as_posix()
-            self._url = f"localfile://{file_path}"
+        if html is None:
             self._html = None
-        else:
-            self._url, self._html = None, content
+            return
+        if not isinstance(html, str):  # pyright: ignore[reportUnnecessaryIsInstance]
+            raise TypeError(f'html must be a str, got {type(html).__name__}.')
+        self._refuse_second_mode('html')
+        self._html = html
+
+    @property
+    def url(self) -> str | None:
+        """
+        Get the URL the webview window loads, if that is its Content.
+        """
+        return self._url
+
+    @url.setter
+    def url(self, url: str | None) -> None:
+        """
+        Load a URL. Refused if an html or a root is already declared.
+        """
+        if url is None:
+            self._url = None
+            return
+        if not isinstance(url, str):  # pyright: ignore[reportUnnecessaryIsInstance]
+            raise TypeError(f'url must be a str, got {type(url).__name__}.')
+        self._refuse_second_mode('url')
+        self._url = url
+
+    @property
+    def root(self) -> Path | None:
+        """
+        Get the directory served to the webview window, if that is its Content.
+        """
+        return self._root
+
+    @root.setter
+    def root(self, root: StrPath | None) -> None:
+        """
+        Serve a local directory, starting at its index.html, so that relative
+        assets resolve. Refused if an html or a url is already declared.
+        """
+        if root is None:
+            self._root = None
+            return
+        directory = Path(root).expanduser()
+        if not directory.exists():
+            raise FileNotFoundError(f'root does not exist: {directory}')
+        if not directory.is_dir():
+            raise NotADirectoryError(
+                f'root must be a directory, not a file: {directory}. To render a '
+                f'single file, read it and set webview.html instead.'
+            )
+        self._refuse_second_mode('root')
+        self._root = directory.resolve()
 
     @property
     def api(self) -> dict[str, Callable[..., Any]] | None:
@@ -175,16 +252,53 @@ class Webview:
         return self._user_data_folder
 
     @user_data_folder.setter
-    def user_data_folder(self, user_data_folder: str) -> None:
+    def user_data_folder(self, user_data_folder: StrPath) -> None:
         """
         Set the user data folder path.
         """
-        self._user_data_folder = user_data_folder
+        self._user_data_folder = Path(user_data_folder).as_posix()
+
+    def _content(self) -> tuple[str | None, str | None]:
+        """
+        Resolve the declared Content into the html and url the Rust side reads.
+
+        A Root travels as a url under the internal protocol, carrying the
+        directory to serve.
+        """
+        declared = [
+            mode
+            for mode, value in (
+                ('html', self._html),
+                ('url', self._url),
+                ('root', self._root),
+            )
+            if value is not None
+        ]
+
+        if not declared:
+            raise ValueError(
+                'No content declared. A Webview renders exactly one of html, url or '
+                'root: set webview.html to an HTML string, webview.url to a URL, or '
+                'webview.root to a directory.'
+            )
+
+        if len(declared) > 1:
+            raise ValueError(
+                f'Content is declared more than once, as {" and ".join(declared)}. '
+                f'A Webview renders exactly one of html, url or root.'
+            )
+
+        if self._root is not None:
+            return None, f'{_ROOT_URL_PREFIX}{self._root.as_posix()}'
+
+        return self._html, self._url
 
     def run(self):
         """
         Run the webview window, in a blocking loop.
         """
+        html, url = self._content()
+
         dry.run(
             {
                 'title': self.title,
@@ -192,8 +306,8 @@ class Webview:
                 'size': self.size,
                 'decorations': self.decorations,
                 'icon_path': self.icon_path,
-                'html': self._html,
-                'url': self._url,
+                'html': html,
+                'url': url,
                 'api': self.api,
                 'dev_tools': self.dev_tools,
                 'user_data_folder': self.user_data_folder,

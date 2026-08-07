@@ -5,7 +5,7 @@
 ## Why?
 
 -   **Familiar Tech**: Use HTML, CSS and JS to design your UIs!
--   **Flexible Content**: Render from an HTML string or from a URL.
+-   **Explicit Content**: Render an HTML string, a URL, or a directory of files.
 -   **Customizable**: Support for borderless windows with custom titlebars!
 -   **Callbacks**: Interact with Python from JavaScript!
 
@@ -27,7 +27,7 @@ from dry import Webview
 
 wv = Webview()
 wv.title = "My Python App!"
-wv.content = "<h1>Hello, World!</h1>"
+wv.html = "<h1>Hello, World!</h1>"
 wv.run()
 ```
 
@@ -35,24 +35,25 @@ For more examples, check out the [examples directory](https://github.com/barrada
 
 ## Features
 
-### Flexible Content
+### Explicit Content
 
-The `Webview` class supports loading content from a string containing HTML, from a URL or using a filepath as a string. You could, for example, compile your HTML, CSS and JS into a single file and load it into the webview.
+A `Webview` renders exactly one content, declared as exactly one of three mutually exclusive properties. Declaring more than one, or none, raises.
 
 ```python
 from dry import Webview
 from pathlib import Path
 
-# Using file path as a string
-html = Path(__file__).parent / "index.html"
-wv.content = html.as_posix()
+# An HTML string
+wv.html = "<h1>Hello, World!</h1>"
 
-# Using a URL
-wv.content = "http://localhost:8000"
+# A URL
+wv.url = "http://localhost:8000"
 
-# Using a string
-wv.content = "<h1>Hello, World!</h1>"
+# A root: a directory served to the webview, starting at its index.html
+wv.root = Path(__file__).parent / "dist"
 ```
+
+`wv.root` is what a compiled frontend wants. The directory is served over an internal protocol, so relative assets — `./assets/index.js`, `<img src="logo.png">` — resolve against it, each file with the content type its extension implies. A request that would resolve outside the directory is refused, and a request for a file that is not there returns a 404 your frontend can observe. Both `wv.root` and `wv.icon_path` accept a `str` or any `os.PathLike`.
 
 If your UI needs to come from a server, know that `wv.run()` blocks the main thread. Consider running the server from a separate thread (preferably a daemon one, which will shutdown along with the main thread).
 
@@ -69,7 +70,7 @@ if __name__ == "__main__":
     thread.start()
 
     wv = Webview()
-    wv.content = "http://localhost:8000"
+    wv.url = "http://localhost:8000"
     wv.run()
 ```
 
@@ -171,7 +172,9 @@ The `Webview` class has a few options you can set through its properties:
 | size             | Initial window dimensions (width, height).                          |
 | decorations      | Whether to show window decorations (title bar, borders).            |
 | icon_path        | Path to the window icon file (.ico format).                         |
-| content          | HTML string or filepath as a string, http:// and https:// locations |
+| html             | An HTML string to render.                                           |
+| url              | A URL to load.                                                      |
+| root             | A directory to serve, starting at its index.html.                   |
 | api              | JavaScript-accessible Python functions.                             |
 | dev_tools        | Whether to enable developer tools.                                  |
 | user_data_folder | Path to store user data. Defaults to temp folder.                   |

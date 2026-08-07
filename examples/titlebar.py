@@ -13,7 +13,7 @@ if __name__ == '__main__':
     wv.title = 'Titlebar Example'
     wv.size = wv.min_size = (1080, 720)
     wv.decorations = False
-    wv.icon_path = ICON_PATH.as_posix()
-    wv.content = HTML
+    wv.icon_path = ICON_PATH
+    wv.html = HTML
     wv.dev_tools = True
     wv.run()
