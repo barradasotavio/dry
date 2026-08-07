@@ -32,6 +32,18 @@
             user-select: none;
         }
 
+        .titlebar-title {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .titlebar-icon {
+            width: 16px;
+            height: 16px;
+            filter: invert(100%);
+        }
+
         .titlebar-button {
             display: inline-flex;
             justify-content: center;
@@ -55,9 +67,15 @@
 </head>
 
 <body>
-    <div class="titlebar">
-        <div data-drag-region>Hello, World!</div>
-        <div>
+    <!-- The whole bar drags, including the icon and the title inside it. The
+         window control buttons opt out, so they stay clickable. -->
+    <div class="titlebar" data-drag-region>
+        <div class="titlebar-title">
+            <img class="titlebar-icon"
+                src="https://api.iconify.design/codicon:window.svg" />
+            <span>Hello, World!</span>
+        </div>
+        <div data-no-drag-region>
             <div class="titlebar-button" onclick="window.dry.minimize()">
                 <img
                     src="https://api.iconify.design/codicon:chrome-minimize.svg" />

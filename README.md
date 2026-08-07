@@ -92,6 +92,15 @@ And then you can use `data-drag-region` to define the draggable area in your HTM
 
 A window without decorations will automatically be draggable within the `data-drag-region` area, having resize handles automatically positioned at all corners.
 
+The whole subtree under a drag region drags, so the heading above moves the window just like the bare margin around it does. Mark an element with `data-no-drag-region` to opt it and its own subtree out — which is what buttons living inside a titlebar want, so a click reaches them instead of moving the window:
+
+```html
+<div data-drag-region>
+    <h1>Custom Titlebar</h1>
+    <button data-no-drag-region onclick="window.dry.close()">Close</button>
+</div>
+```
+
 Everything Dry exposes to the frontend lives on a single global, `window.dry`, so it never collides with a standard browser API or with your own globals.
 
 With or without decorations, basic window controls are available from the DOM, allowing you to minimize, maximize and close window. More are to come in the future.
