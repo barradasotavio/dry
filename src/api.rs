@@ -1,87 +1,54 @@
-use pyo3::{
-  Py, Python,
-  types::{PyFunction, PyTuple},
-};
-use serde::{Deserialize, Serialize};
-use serde_json::{from_str, to_string};
+use pyo3::{Py, Python, types::PyFunction};
 use std::{collections::HashMap, error::Error};
 use tao::event_loop::EventLoopProxy;
 
 use crate::{
   events::AppEvent,
-  types::{NoneType, PythonType},
+  types::{
+    Call, CallResult, arguments_to_python, call_result_script, from_python, parse_call,
+  },
 };
 
 pub const API_JS: &str = include_str!("js/api.js");
 
-#[derive(Deserialize)]
-struct CallRequest {
-  call_id: String,
-  function: String,
-  arguments: Vec<PythonType>,
-}
-
-impl CallRequest {
-  fn run(
-    &self, api: &HashMap<String, Py<PyFunction>>,
-  ) -> Result<CallResponse, Box<dyn Error>> {
-    let py_func = api
-      .get(&self.function)
-      .ok_or(format!("Function {} not found.", self.function))?;
-    Python::attach(|py| {
-      let py_args = PyTuple::new(py, self.arguments.clone())?;
-      match py_func.call1(py, py_args) {
-        Ok(py_result) => Ok(CallResponse {
-          call_id: self.call_id.clone(),
-          result: py_result.extract(py)?,
-          error: None,
-        }),
-        Err(py_err) => {
-          py_err.display(py);
-          Ok(CallResponse {
-            call_id: self.call_id.clone(),
-            result: PythonType::None(NoneType),
-            error: Some(py_err.to_string()),
-          })
-        },
-      }
-    })
-  }
-}
-
-#[derive(Serialize)]
-struct CallResponse {
-  call_id: String,
-  result: PythonType,
-  error: Option<String>,
-}
-
-impl CallResponse {
-  fn run(
-    &self, event_loop_proxy: &EventLoopProxy<AppEvent>,
-  ) -> Result<(), Box<dyn Error>> {
-    let response = format!("window.ipcCallback({})", to_string(self)?);
-    event_loop_proxy.send_event(AppEvent::RunJavascript(response))?;
-    Ok(())
-  }
+/// Runs a Call against the Api, holding the GIL for exactly as long as the
+/// Python callable does. Everything either side of it is conversion, and lives
+/// in `types.rs` where a test can reach it.
+fn run_call(
+  call: &Call, api: &HashMap<String, Py<PyFunction>>,
+) -> Result<CallResult, Box<dyn Error>> {
+  let py_func = api
+    .get(&call.function)
+    .ok_or(format!("Function {} not found.", call.function))?;
+  Python::attach(|py| {
+    let py_args = arguments_to_python(py, &call.arguments)?;
+    match py_func.call1(py, py_args) {
+      Ok(py_result) => Ok(CallResult {
+        call_id: call.call_id.clone(),
+        result: from_python(py_result.bind(py))?,
+        error: None,
+      }),
+      Err(py_err) => {
+        py_err.display(py);
+        Ok(CallResult::failed(call.call_id.clone(), py_err.to_string()))
+      },
+    }
+  })
 }
 
 pub fn handle_api_requests(
   request_body: &String, api: &HashMap<String, Py<PyFunction>>,
   event_loop_proxy: &EventLoopProxy<AppEvent>,
 ) -> Result<(), Box<dyn Error>> {
-  let call_request: CallRequest = from_str(request_body)?;
-  let call_response = match call_request.run(api) {
-    Ok(call_response) => call_response,
+  let call = parse_call(request_body)?;
+  let call_result = match run_call(&call, api) {
+    Ok(call_result) => call_result,
     Err(err) => {
       eprintln!("{:?}", err);
-      CallResponse {
-        call_id: call_request.call_id,
-        result: PythonType::None(NoneType),
-        error: Some(err.to_string()),
-      }
+      CallResult::failed(call.call_id, err.to_string())
     },
   };
-  call_response.run(&event_loop_proxy)?;
+  event_loop_proxy
+    .send_event(AppEvent::RunJavascript(call_result_script(&call_result)?))?;
   Ok(())
 }
