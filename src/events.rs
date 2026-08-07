@@ -6,6 +6,8 @@ use tao::{
 };
 use wry::WebView;
 
+use crate::logs;
+
 pub static PROXY: OnceLock<Mutex<Option<EventLoopProxy<AppEvent>>>> = OnceLock::new();
 
 #[derive(Debug)]
@@ -28,7 +30,10 @@ pub fn run_event_loop(
 
     match event {
       Event::NewEvents(StartCause::Init) => {
-        println!("{} started.", window.title());
+        logs::debug(
+          logs::WEBVIEW,
+          format!("Webview '{}' started.", window.title()),
+        );
       },
       Event::WindowEvent { event, .. } => {
         handle_window_event(event, &mut webview, control_flow)
@@ -62,7 +67,10 @@ fn handle_app_event(
     AppEvent::DragWindow => drag(window),
     AppEvent::ResizeWindow(direction) => {
       if let Err(err) = window.drag_resize_window(direction) {
-        eprintln!("Failed to resize window: {:?}", err);
+        logs::error(
+          logs::WEBVIEW,
+          format!("The window could not be resized: {err}"),
+        );
       }
     },
     AppEvent::FromPython(message) => handle_python_event(&message),
@@ -71,7 +79,10 @@ fn handle_app_event(
 
 fn run_javascript(webview: &WebView, js: &str) {
   if let Err(err) = webview.evaluate_script(js) {
-    eprintln!("Failed to evaluate JavaScript: {:?}", err);
+    logs::error(
+      logs::BRIDGE,
+      format!("The JavaScript could not be evaluated: {err}"),
+    );
   }
 }
 
@@ -93,10 +104,13 @@ fn toggle_maximize(window: &Window) {
 
 fn drag(window: &Window) {
   if let Err(err) = window.drag_window() {
-    eprintln!("Failed to drag window: {:?}", err);
+    logs::error(
+      logs::WEBVIEW,
+      format!("The window could not be dragged: {err}"),
+    );
   }
 }
 
 fn handle_python_event(message: &str) {
-  println!("{}", message);
+  logs::debug(logs::BRIDGE, format!("Event from Python: {message}"));
 }

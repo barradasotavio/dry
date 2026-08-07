@@ -147,6 +147,35 @@ Be aware of the supported data types for function arguments and return values:
 | dict        | object          |
 | bytes       | number[]        |
 
+### Errors and Logging
+
+Everything Dry can fail at raises a `DryError`, so you can catch what you mean:
+
+```python
+from dry import Webview
+from dry.exceptions import BridgeError, DryError, PanicError, WebviewError
+```
+
+`WebviewError` covers a window or web content that could not be built, `BridgeError` a message that could not cross to or from the frontend, and `PanicError` a bug inside Dry itself. All three are `DryError`.
+
+A callback that raises rejects the JavaScript promise with an `Error` whose `name` is the Python exception's type, so the frontend can tell one failure from another:
+
+```javascript
+try {
+    await window.dry.api.load_file('missing.txt');
+} catch (error) {
+    if (error.name === 'FileNotFoundError') { /* ... */ }
+}
+```
+
+Dry writes to no stream of its own. Its diagnostics go to the `dry` logger, and its children `dry.webview` and `dry.bridge`, and stay silent until your application configures logging:
+
+```python
+import logging
+
+logging.basicConfig(level=logging.DEBUG)
+```
+
 ### Other
 
 The `Webview` class has a few options you can set through its properties:
