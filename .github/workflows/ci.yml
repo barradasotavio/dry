@@ -50,7 +50,8 @@ jobs:
         run: cargo test --locked
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v9
+        # setup-uv publishes no floating major tag past v7, so pin the release.
+        uses: astral-sh/setup-uv@v9.0.0
         with:
           enable-cache: true
 
