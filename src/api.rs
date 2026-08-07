@@ -1,4 +1,4 @@
-use pyo3::{Py, Python, types::PyFunction};
+use pyo3::{Py, PyAny, Python};
 use std::{collections::HashMap, error::Error};
 use tao::event_loop::EventLoopProxy;
 
@@ -15,7 +15,7 @@ pub const API_JS: &str = include_str!("js/api.js");
 /// Python callable does. Everything either side of it is conversion, and lives
 /// in `types.rs` where a test can reach it.
 fn run_call(
-  call: &Call, api: &HashMap<String, Py<PyFunction>>,
+  call: &Call, api: &HashMap<String, Py<PyAny>>,
 ) -> Result<CallResult, Box<dyn Error>> {
   let py_func = api
     .get(&call.function)
@@ -37,7 +37,7 @@ fn run_call(
 }
 
 pub fn handle_api_requests(
-  request_body: &String, api: &HashMap<String, Py<PyFunction>>,
+  request_body: &String, api: &HashMap<String, Py<PyAny>>,
   event_loop_proxy: &EventLoopProxy<AppEvent>,
 ) -> Result<(), Box<dyn Error>> {
   let call = parse_call(request_body)?;

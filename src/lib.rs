@@ -4,7 +4,7 @@ mod types;
 mod webview;
 mod window;
 
-use pyo3::{prelude::*, types::PyFunction};
+use pyo3::{exceptions::PyTypeError, prelude::*};
 use std::{collections::HashMap, sync::Mutex};
 use tao::event_loop::EventLoopBuilder;
 
@@ -29,13 +29,23 @@ struct Settings {
   icon_path: Option<String>,
   html: Option<String>,
   url: Option<String>,
-  api: Option<HashMap<String, Py<PyFunction>>>,
+  api: Option<HashMap<String, Py<PyAny>>>,
   dev_tools: bool,
   user_data_folder: String,
 }
 
 #[pyfunction]
-fn run(settings: Settings) {
+fn run(py: Python<'_>, settings: Settings) -> PyResult<()> {
+  if let Some(api) = &settings.api {
+    for (name, entry) in api {
+      if !entry.bind(py).is_callable() {
+        return Err(PyTypeError::new_err(format!(
+          "Api entry '{name}' is not callable."
+        )));
+      }
+    }
+  }
+
   let event_loop = EventLoopBuilder::<AppEvent>::with_user_event().build();
 
   let proxy = event_loop.create_proxy();
@@ -67,6 +77,8 @@ fn run(settings: Settings) {
   .expect("Failed to build webview");
 
   run_event_loop(event_loop, window, webview);
+
+  Ok(())
 }
 
 #[pyfunction]

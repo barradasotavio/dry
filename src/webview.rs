@@ -5,7 +5,7 @@ use std::{
   path::{Path, PathBuf},
 };
 
-use pyo3::{Py, types::PyFunction};
+use pyo3::{Py, PyAny};
 use tao::{event_loop::EventLoopProxy, window::Window};
 use wry::{
   Error as WryError, WebContext, WebView, WebViewBuilder,
@@ -91,8 +91,7 @@ fn handle_file_request(file_path: &str) -> Response<Cow<'static, [u8]>> {
 }
 
 pub fn build_ipc_handler(
-  api: Option<HashMap<String, Py<PyFunction>>>,
-  event_loop_proxy: EventLoopProxy<AppEvent>,
+  api: Option<HashMap<String, Py<PyAny>>>, event_loop_proxy: EventLoopProxy<AppEvent>,
 ) -> impl Fn(Request<String>) + 'static {
   move |request| {
     let request_body = request.body();
