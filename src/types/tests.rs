@@ -289,7 +289,7 @@ mod call_messages {
     };
     assert_eq!(
       call_result_script(&result).expect("the result should reach the wire"),
-      r#"window.ipcCallback({"call_id":"abc","result":"hi","error":null})"#
+      r#"window.dry.resolveCall({"call_id":"abc","result":"hi","error":null})"#
     );
   }
 
@@ -299,7 +299,7 @@ mod call_messages {
       CallResult::failed("abc".to_string(), "Function x not found.".to_string());
     assert_eq!(
       call_result_script(&result).expect("the result should reach the wire"),
-      r#"window.ipcCallback({"call_id":"abc","result":null,"error":"Function x not found."})"#
+      r#"window.dry.resolveCall({"call_id":"abc","result":null,"error":"Function x not found."})"#
     );
   }
 }

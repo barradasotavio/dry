@@ -154,7 +154,7 @@ pub fn parse_call(body: &str) -> Result<Call, JsonError> {
 
 /// Writes the JavaScript that hands a CallResult back to the frontend.
 pub fn call_result_script(result: &CallResult) -> Result<String, JsonError> {
-  Ok(format!("window.ipcCallback({})", to_string(result)?))
+  Ok(format!("window.dry.resolveCall({})", to_string(result)?))
 }
 
 /// Reads a Python value into the Bridge contract.

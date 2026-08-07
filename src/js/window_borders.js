@@ -20,7 +20,7 @@ const edgeDivs = edgeSettings.map(edge => {
     });
     div.addEventListener('mousedown', e => {
         e.preventDefault();
-        window.resize(edge.direction);
+        window.dry.resize(edge.direction);
     });
     document.body.appendChild(div);
     return div;
