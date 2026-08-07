@@ -1,0 +1,140 @@
+name: Release
+
+# Push a v-prefixed tag to cut a release. workflow_dispatch builds the same two
+# wheels and uploads them as artifacts without publishing, so the build can be
+# exercised on a branch without touching PyPI.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  # ADR-0003 puts the Python floor at 3.14. The wheels are abi3, so this is the
+  # only interpreter a release ever needs to see.
+  PYTHON_VERSION: '3.14'
+  MATURIN_VERSION: '1.14.1'
+
+jobs:
+  wheels:
+    name: Build the ${{ matrix.platform }} wheel
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # ADR-0003: two wheels per release, one per platform. There is no Linux
+        # job, and no per-Python matrix — abi3 makes one wheel serve every
+        # future CPython.
+        include:
+          - os: windows-latest
+            platform: win_amd64
+            target: x86_64-pc-windows-msvc
+            rust-targets: x86_64-pc-windows-msvc
+          - os: macos-latest
+            platform: macosx_universal2
+            target: universal2-apple-darwin
+            # A genuine universal2 wheel is two builds lipo'd together, so both
+            # Apple targets have to be installed.
+            rust-targets: aarch64-apple-darwin,x86_64-apple-darwin
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      - name: Install Python ${{ env.PYTHON_VERSION }}
+        id: python
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        # setup-uv publishes no floating major tag past v7, so pin the release.
+        uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: true
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-targets }}
+
+      - name: Cache Rust builds
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build the wheel
+        run: >-
+          uvx maturin@${{ env.MATURIN_VERSION }} build
+          --release
+          --locked
+          --strip
+          --target ${{ matrix.target }}
+          --interpreter '${{ steps.python.outputs.python-path }}'
+          --out dist
+
+      # A wheel that does not import is not a release. abi3 means the tag says
+      # cp314-abi3, so this also catches a build that quietly lost the feature.
+      - name: Install the wheel and import the Webview
+        run: |
+          wheel=$(ls dist/*.whl)
+          case "$wheel" in
+            *cp314-abi3*) ;;
+            *) echo "Not an abi3 wheel: $wheel" >&2; exit 1 ;;
+          esac
+          uv venv --python '${{ steps.python.outputs.python-path }}' "$RUNNER_TEMP/venv"
+          VIRTUAL_ENV="$RUNNER_TEMP/venv" uv pip install "$(pwd)/$wheel"
+          # From a directory that does not hold the dry/ sources, so the import
+          # resolves to the installed wheel.
+          cd "$RUNNER_TEMP"
+          VIRTUAL_ENV="$RUNNER_TEMP/venv" uv run --no-project python -c 'from dry import Webview; Webview()'
+
+      - name: Upload the wheel
+        uses: actions/upload-artifact@v7
+        with:
+          name: wheel-${{ matrix.platform }}
+          path: dist/*.whl
+          if-no-files-found: error
+
+  publish:
+    # Trusted Publishing: PyPI mints a short-lived token from the OIDC identity
+    # of this job, so no API token is stored in the repository.
+    #
+    # One-time manual setup by the maintainer, on PyPI only:
+    #   1. https://pypi.org/manage/project/dry-webview/settings/publishing/
+    #   2. Add a pending or existing GitHub publisher with
+    #      owner "barradasotavio", repository "dry",
+    #      workflow "release.yml", environment "pypi".
+    #   3. In this repository's settings, create the "pypi" environment and
+    #      restrict it to tags matching v* .
+    # Nothing else is needed; the name below must match the environment
+    # configured on PyPI exactly.
+    name: Publish to PyPI
+    needs: wheels
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    environment:
+      name: pypi
+      url: https://pypi.org/p/dry-webview
+    permissions:
+      # Required to mint the OIDC token Trusted Publishing exchanges.
+      id-token: write
+    steps:
+      - name: Download the wheels
+        uses: actions/download-artifact@v8
+        with:
+          pattern: wheel-*
+          merge-multiple: true
+          path: dist
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@v1.14.2
