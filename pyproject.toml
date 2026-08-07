@@ -1,10 +1,10 @@
 [build-system]
-requires = ["maturin>=1.7,<2.0"]
+requires = ["maturin>=1.9,<2.0"]
 build-backend = "maturin"
 
 [project]
 name = "dry-webview"
-requires-python = ">=3.11"
+requires-python = ">=3.14"
 description = "Use your web dev skills to design UIs for your Python apps with this simple, Rust-powered webview library."
 authors = [{ name = "Otávio Barradas" }]
 readme = "README.md"
@@ -13,9 +13,12 @@ keywords = ["webview", "gui", "rust", "ui", "web", "python"]
 urls = { "Homepage" = "https://github.com/barradasotavio/dry", "Repository" = "https://github.com/barradasotavio/dry.git" }
 classifiers = [
     "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.14",
     "Programming Language :: Python :: Implementation :: CPython",
     "Programming Language :: Rust",
     "Operating System :: Microsoft :: Windows",
+    "Operating System :: MacOS :: MacOS X",
     "License :: OSI Approved :: MIT License",
     "Development Status :: 3 - Alpha",
 ]
@@ -25,7 +28,7 @@ dynamic = ["version"]
 features = ["pyo3/extension-module"]
 
 [dependency-groups]
-dev = ["maturin>=1.7.8", "ruff>=0.8.2", "taskipy>=1.14.1"]
+dev = ["maturin>=1.9", "ruff>=0.8.2", "taskipy>=1.14.1"]
 
 [tool.ruff]
 line-length = 88

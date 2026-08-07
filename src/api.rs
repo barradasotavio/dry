@@ -1,7 +1,4 @@
-use pyo3::{
-  Py, Python,
-  types::{PyFunction, PyTuple},
-};
+use pyo3::{Py, PyAny, Python, types::PyTuple};
 use serde::{Deserialize, Serialize};
 use serde_json::{from_str, to_string};
 use std::{collections::HashMap, error::Error};
@@ -23,7 +20,7 @@ struct CallRequest {
 
 impl CallRequest {
   fn run(
-    &self, api: &HashMap<String, Py<PyFunction>>,
+    &self, api: &HashMap<String, Py<PyAny>>,
   ) -> Result<CallResponse, Box<dyn Error>> {
     let py_func = api
       .get(&self.function)
@@ -67,7 +64,7 @@ impl CallResponse {
 }
 
 pub fn handle_api_requests(
-  request_body: &String, api: &HashMap<String, Py<PyFunction>>,
+  request_body: &String, api: &HashMap<String, Py<PyAny>>,
   event_loop_proxy: &EventLoopProxy<AppEvent>,
 ) -> Result<(), Box<dyn Error>> {
   let call_request: CallRequest = from_str(request_body)?;
