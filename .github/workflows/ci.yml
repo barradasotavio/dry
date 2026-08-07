@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  # ADR-0003 puts the Python floor at 3.14.
+  PYTHON_VERSION: '3.14'
+  PYREFLY_VERSION: '1.2.0'
+  PYRIGHT_VERSION: '1.1.411'
+
+jobs:
+  build:
+    name: Build and test on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Dry targets Windows and macOS only. There is no Linux job.
+        os: [windows-latest, macos-latest]
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      - name: Install Python ${{ env.PYTHON_VERSION }}
+        id: python
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust builds
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run the Rust tests
+        run: cargo test --locked
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v9
+        with:
+          enable-cache: true
+
+      - name: Build and install the Webview extension module
+        run: uv sync --locked --no-dev --python '${{ steps.python.outputs.python-path }}'
+
+      - name: Import the Webview from Python
+        run: uv run --no-sync python -c 'from dry import Webview; Webview()'
+
+      - name: Type check with Pyrefly
+        run: >-
+          uvx pyrefly@${{ env.PYREFLY_VERSION }} check
+          --preset strict
+          --python-version ${{ env.PYTHON_VERSION }}
+          --search-path .
+          --skip-interpreter-query
+          dry examples
+
+  pyright:
+    # Pyright is the compatibility gate: users get it inside their editors, so a
+    # py.typed package validated only by Pyrefly can still ship errors to them.
+    name: Type check with Pyright
+    runs-on: windows-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      - name: Install Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+
+      - name: Type check with Pyright
+        run: npx --yes pyright@${{ env.PYRIGHT_VERSION }}
