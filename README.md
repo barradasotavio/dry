@@ -132,7 +132,9 @@ console.log(hello); // Hello, World!
 console.log(sum); // 3
 ```
 
-Be aware of the supported data types for function arguments and return values:
+Values crossing the bridge are exactly the JSON data model, with `json.dumps`
+and `json.loads` semantics. Anything outside it raises, rather than arriving as
+something you did not send:
 
 | Python Type | JavaScript Type |
 | ----------- | --------------- |
@@ -143,9 +145,20 @@ Be aware of the supported data types for function arguments and return values:
 | str         | string          |
 | list        | array           |
 | tuple       | array           |
-| set         | array           |
 | dict        | object          |
-| bytes       | number[]        |
+
+A few consequences worth knowing:
+
+-   A `tuple` is written as an array, so a round trip returns a `list`.
+-   Dictionary keys are coerced to strings, exactly as `json.dumps` coerces
+    them, so a round trip returns string keys. Only `str`, `int`, `float`,
+    `bool` and `None` may be keys.
+-   An `int` outside ±2^53 raises, because JavaScript would read it with digits
+    missing. `NaN` and `Infinity` raise, being outside JSON.
+-   `set` and `bytes` raise: JSON has neither, and neither survives the round
+    trip. Pass a `list`, or a `str`.
+-   `datetime`, `Decimal`, `Enum`, dataclasses and anything else raise unless
+    you convert them yourself.
 
 ### Other
 
