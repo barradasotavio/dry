@@ -33,7 +33,7 @@ A local directory served to the Webview over an internal protocol, so relative a
 _Avoid_: Static files, assets folder, file path
 
 **Drag region**:
-An element marked `data-drag-region` that moves the window when dragged, standing in for a native titlebar.
+An element marked `data-drag-region` that moves the window when dragged, standing in for a native titlebar. Its whole subtree drags with it, except where a descendant marked `data-no-drag-region` opts its own subtree back out.
 _Avoid_: Titlebar, header
 
 **Bridge contract**:
