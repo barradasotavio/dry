@@ -28,7 +28,12 @@
         if (!call) return;
         pending.delete(call_id);
         if (error) {
-            call.reject(new Error(error));
+            // Rust sends "TypeName: message", so the Python exception's type
+            // survives as the name of the Error the Promise rejects with.
+            const separator = error.indexOf(': ');
+            const rejection = new Error(separator === -1 ? error : error.slice(separator + 2));
+            if (separator !== -1) rejection.name = error.slice(0, separator);
+            call.reject(rejection);
         } else {
             call.resolve(result);
         }

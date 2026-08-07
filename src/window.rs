@@ -7,7 +7,7 @@ use tao::{
   window::{Icon, Window, WindowBuilder},
 };
 
-use crate::events::AppEvent;
+use crate::{events::AppEvent, logs};
 
 pub const WINDOW_FUNCTIONS_JS: &str = include_str!("js/window_functions.js");
 pub const WINDOW_EVENTS_JS: &str = include_str!("js/window_events.js");
@@ -32,16 +32,21 @@ pub fn build_window(
   Ok(window)
 }
 
+/// An icon that cannot be read is worth a record, not a dead Webview: the
+/// window opens with the platform's default icon instead.
 fn load_icon(path: &Path) -> Option<Icon> {
-  let (icon_rgba, icon_width, icon_height) = {
-    let image = image::open(path)
-      .expect("Failed to open icon path")
-      .into_rgba8();
-    let (width, height) = image.dimensions();
-    let rgba = image.into_raw();
-    (rgba, width, height)
+  let image = match image::open(path) {
+    Ok(image) => image.into_rgba8(),
+    Err(err) => {
+      logs::warning(
+        logs::WEBVIEW,
+        format!("The icon at '{}' could not be read: {err}", path.display()),
+      );
+      return None;
+    },
   };
-  Icon::from_rgba(icon_rgba, icon_width, icon_height).ok()
+  let (width, height) = image.dimensions();
+  Icon::from_rgba(image.into_raw(), width, height).ok()
 }
 
 pub fn handle_window_requests(request_body: &String, proxy: &EventLoopProxy<AppEvent>) {
@@ -51,7 +56,10 @@ pub fn handle_window_requests(request_body: &String, proxy: &EventLoopProxy<AppE
   let action = match request.next() {
     Some(action) => action,
     None => {
-      eprintln!("Invalid request: {}", request_body);
+      logs::error(
+        logs::WEBVIEW,
+        format!("Invalid window request: {request_body}"),
+      );
       return;
     },
   };
@@ -72,19 +80,22 @@ pub fn handle_window_requests(request_body: &String, proxy: &EventLoopProxy<AppE
         Some("south-west") => ResizeDirection::SouthWest,
         Some("south-east") => ResizeDirection::SouthEast,
         _ => {
-          eprintln!("Invalid resize direction");
+          logs::error(logs::WEBVIEW, "Invalid resize direction.");
           return;
         },
       };
       proxy.send_event(AppEvent::ResizeWindow(direction))
     },
     _ => {
-      eprintln!("Invalid window control: {}", action);
+      logs::error(logs::WEBVIEW, format!("Invalid window control: {action}"));
       return;
     },
   };
 
-  if let Err(e) = result {
-    eprintln!("Failed to send event: {:?}", e);
+  if let Err(err) = result {
+    logs::error(
+      logs::WEBVIEW,
+      format!("The window Event could not be sent: {err}"),
+    );
   }
 }

@@ -15,6 +15,7 @@ use wry::{
 use crate::{
   api::{API_JS, handle_api_requests},
   events::AppEvent,
+  logs,
   window::{
     WINDOW_BORDERS_JS, WINDOW_EVENTS_JS, WINDOW_FUNCTIONS_JS, handle_window_requests,
   },
@@ -268,7 +269,10 @@ pub fn build_ipc_handler(
     if let Some(api) = &api
       && let Err(err) = handle_api_requests(request_body, api, &event_loop_proxy)
     {
-      eprintln!("{:?}", err);
+      logs::error(
+        logs::BRIDGE,
+        format!("The Call could not be handled: {err}"),
+      );
     }
   }
 }
