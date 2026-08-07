@@ -20,6 +20,8 @@ use crate::{
   },
 };
 
+pub const NAMESPACE_JS: &str = include_str!("js/namespace.js");
+
 pub fn build_webview(
   window: &Window, ipc_handler: impl Fn(Request<String>) + 'static,
   html: Option<String>, url: Option<String>, decorations: bool, api: bool,
@@ -29,6 +31,7 @@ pub fn build_webview(
   let mut web_context = WebContext::new(Some(data_directory));
 
   let mut builder = WebViewBuilder::new_with_web_context(&mut web_context)
+    .with_initialization_script(NAMESPACE_JS)
     .with_initialization_script(WINDOW_FUNCTIONS_JS)
     .with_initialization_script(WINDOW_EVENTS_JS)
     .with_devtools(dev_tools)

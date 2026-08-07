@@ -145,7 +145,7 @@
         <script>
             async function testHello() {
                 try {
-                    const data = await window.api.hello('User');
+                    const data = await window.dry.api.hello('User');
                     document.getElementById('result').innerHTML =
                         JSON.stringify(data, null, 2);
                 } catch (error) {
@@ -156,7 +156,7 @@
 
             async function testReturnsNone() {
                 try {
-                    const data = await window.api.returnsNone();
+                    const data = await window.dry.api.returnsNone();
                     document.getElementById('result').innerHTML =
                         JSON.stringify(data, null, 2);
                 } catch (error) {
@@ -167,7 +167,7 @@
 
             async function testReturnsBytes() {
                 try {
-                    const data = await window.api.returnsBytes();
+                    const data = await window.dry.api.returnsBytes();
                     document.getElementById('result').innerHTML =
                         JSON.stringify(data, null, 2);
                 } catch (error) {
@@ -178,7 +178,7 @@
 
             async function testReturnsDict() {
                 try {
-                    const data = await window.api.returnsDict();
+                    const data = await window.dry.api.returnsDict();
                     document.getElementById('result').innerHTML =
                         JSON.stringify(data, null, 2);
                 } catch (error) {
@@ -189,7 +189,7 @@
 
             async function testReturnsList() {
                 try {
-                    const data = await window.api.returnsList();
+                    const data = await window.dry.api.returnsList();
                     document.getElementById('result').innerHTML =
                         JSON.stringify(data, null, 2);
                 } catch (error) {
@@ -200,7 +200,7 @@
 
             async function testReturnsTuple() {
                 try {
-                    const data = await window.api.returnsTuple();
+                    const data = await window.dry.api.returnsTuple();
                     document.getElementById('result').innerHTML =
                         JSON.stringify(data, null, 2);
                 } catch (error) {
@@ -211,7 +211,7 @@
 
             async function testReturnsSet() {
                 try {
-                    const data = await window.api.returnsSet();
+                    const data = await window.dry.api.returnsSet();
                     document.getElementById('result').innerHTML =
                         JSON.stringify(data, null, 2);
                 } catch (error) {
@@ -222,7 +222,7 @@
 
             async function testReturnsFloat() {
                 try {
-                    const data = await window.api.returnsFloat();
+                    const data = await window.dry.api.returnsFloat();
                     document.getElementById('result').innerHTML =
                         JSON.stringify(data, null, 2);
                 } catch (error) {
@@ -233,7 +233,7 @@
 
             async function testReturnsInt() {
                 try {
-                    const data = await window.api.returnsInt();
+                    const data = await window.dry.api.returnsInt();
                     document.getElementById('result').innerHTML =
                         JSON.stringify(data, null, 2);
                 } catch (error) {
@@ -244,7 +244,7 @@
 
             async function testReturnsStr() {
                 try {
-                    const data = await window.api.returnsStr();
+                    const data = await window.dry.api.returnsStr();
                     document.getElementById('result').innerHTML =
                         JSON.stringify(data, null, 2);
                 } catch (error) {
@@ -255,7 +255,7 @@
 
             async function testRaisesException() {
                 try {
-                    const data = await window.api.raisesException();
+                    const data = await window.dry.api.raisesException();
                     document.getElementById('result').innerHTML =
                         JSON.stringify(data, null, 2);
                 } catch (error) {

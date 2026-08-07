@@ -60,7 +60,7 @@ impl CallResponse {
   fn run(
     &self, event_loop_proxy: &EventLoopProxy<AppEvent>,
   ) -> Result<(), Box<dyn Error>> {
-    let response = format!("window.ipcCallback({})", to_string(self)?);
+    let response = format!("window.dry.resolveCall({})", to_string(self)?);
     event_loop_proxy.send_event(AppEvent::RunJavascript(response))?;
     Ok(())
   }

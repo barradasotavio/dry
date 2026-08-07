@@ -17,7 +17,7 @@ class DragChecker {
         )) {
             this.isDragging = true;
             this.stop();
-            window.drag();
+            window.dry.drag();
         }
     }
 
@@ -47,7 +47,7 @@ document.addEventListener('mousedown', (e) => {
 
     const isDoubleClick = e.detail === 2;
     if (isDoubleClick) {
-        window.toggleMaximize();
+        window.dry.toggleMaximize();
     } else {
         dragChecker.start(e.clientX, e.clientY);
     }

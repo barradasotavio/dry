@@ -91,12 +91,14 @@ And then you can use `data-drag-region` to define the draggable area in your HTM
 
 A window without decorations will automatically be draggable within the `data-drag-region` area, having resize handles automatically positioned at all corners.
 
+Everything Dry exposes to the frontend lives on a single global, `window.dry`, so it never collides with a standard browser API or with your own globals.
+
 With or without decorations, basic window controls are available from the DOM, allowing you to minimize, maximize and close window. More are to come in the future.
 
 ```html
-<button onclick="window.minimize()">Minimize</button>
-<button onclick="window.toggleMaximize()">Maximize</button>
-<button onclick="window.close()">Close</button>
+<button onclick="window.dry.minimize()">Minimize</button>
+<button onclick="window.dry.toggleMaximize()">Maximize</button>
+<button onclick="window.dry.close()">Close</button>
 ```
 
 ### Callbacks
@@ -123,8 +125,8 @@ wv.run()
 And then you can call them from JavaScript as follows:
 
 ```javascript
-const hello = await window.api.helloWorld();
-const sum = await window.api.dumbSum(1, 2);
+const hello = await window.dry.api.helloWorld();
+const sum = await window.dry.api.dumbSum(1, 2);
 
 console.log(hello); // Hello, World!
 console.log(sum); // 3
