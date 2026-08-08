@@ -128,6 +128,38 @@ With or without decorations, basic window controls are available from the DOM, a
 <button onclick="window.dry.close()">Close</button>
 ```
 
+#### Window events
+
+A titlebar that only commands the window keeps its own guess at whether the window is maximised, and that guess is wrong the first time someone double-clicks the bar or uses an OS keyboard shortcut. So the window reports what it is doing, as ordinary Events under names Dry reserves for itself:
+
+```html
+<script>
+    window.dry.on('window:maximized', () => icon.src = RESTORE);
+    window.dry.on('window:unmaximized', () => icon.src = MAXIMIZE);
+    window.dry.on('window:resized', ({ width, height }) => show(width, height));
+</script>
+```
+
+| Name | Value |
+| --- | --- |
+| `window:maximized`, `window:unmaximized` | none |
+| `window:minimized`, `window:restored` | none |
+| `window:hidden`, `window:shown` | none |
+| `window:focused`, `window:blurred` | none |
+| `window:resized` | `{width, height}` |
+| `window:moved` | `{x, y}` |
+| `window:close-requested` | none, and it is a notification rather than a vote — `on_close` is what can refuse a close |
+
+Every one of them fires for a change the user made as much as for one your application made. Sizes and positions are logical pixels, the same unit `size=` and `min_size=` are given, so they are the numbers CSS is working in. `window:resized` and `window:moved` are emitted at most once per turn of the event loop and only when the value actually changed, so a drag does not flood your listeners.
+
+The same names work from Python, on the same bus as any Event of your own:
+
+```python
+wv.on('window:resized', lambda size: print(size['width'], size['height']))
+```
+
+A name beginning with `window:` belongs to Dry: listen for one as much as you like, but `wv.emit` and `window.dry.emit` refuse it, so a listener for one knows it is hearing from the window and nothing else.
+
 ### Callbacks
 
 You can use callbacks to interact with Python from JavaScript. You define them like this:

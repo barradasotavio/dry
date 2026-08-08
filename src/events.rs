@@ -28,7 +28,7 @@ use crate::{
   errors::BridgeError,
   logs,
   types::{PythonType, from_python, to_python},
-  window::resize,
+  window::{resize, state},
 };
 
 pub const EVENTS_JS: &str = include_str!("js/events.js");
@@ -193,11 +193,10 @@ fn deliver_through(portal: &Bound<'_, PyModule>, name: &str, value: &PythonType)
 
 /// Emits an Event under a reserved name, to both sides at once.
 ///
-/// The door Dry's own Events come through, and the one #6 wants: a window
-/// event is an Event like any other, so it reaches every Python listener and
-/// every frontend listener registered for its name, and neither side can forge
-/// one. Nothing calls it yet.
-#[allow(dead_code)]
+/// The door Dry's own Events come through: a window event is an Event like any
+/// other, so it reaches every Python listener and every frontend listener
+/// registered for its name, and neither side can forge one. The window state
+/// in `window::state` comes through here.
 pub fn emit_reserved(name: &str, value: PythonType) {
   if let Err(err) = deliver_to_frontend(name, &value) {
     logs::error(
@@ -206,6 +205,30 @@ pub fn emit_reserved(name: &str, value: PythonType) {
     );
   }
   deliver_to_python(name, &value);
+}
+
+/// Emits a reserved Event to both sides without going round the event loop.
+///
+/// `emit_reserved` posts the frontend's copy as an AppEvent, which the loop
+/// picks up on a later turn. That is right for everything except the last
+/// Event the window ever sends: `window:close-requested` is emitted from
+/// inside the turn that may end the loop, and a script queued for a turn that
+/// never comes is a script the page never sees. So the caller that already
+/// holds the WebView on the thread that draws it evaluates the script here and
+/// now, and the frontend hears the request before the close hook is asked.
+pub fn emit_reserved_now(webview: &WebView, name: &str, value: PythonType) {
+  let event = BridgeEvent {
+    name: name.to_string(),
+    value,
+  };
+  match event_script(&event) {
+    Ok(script) => run_javascript(webview, &script),
+    Err(err) => logs::error(
+      logs::BRIDGE,
+      format!("The Event '{name}' could not be written: {err}"),
+    ),
+  }
+  deliver_to_python(name, &event.value);
 }
 
 /// Reads one Event off the Bridge and hands it to Python.
@@ -233,6 +256,10 @@ pub fn run_event_loop(
   event_loop: EventLoop<AppEvent>, window: Window, webview: WebView,
 ) {
   let mut webview = webview;
+  // What the window looked like on the turn before this one. Every window
+  // Event is the difference between this and a fresh reading; see
+  // `window::state`.
+  let mut window_state = state::initial(&window);
   event_loop.run(move |event, _, control_flow| {
     *control_flow = ControlFlow::Wait;
 
@@ -249,6 +276,13 @@ pub fn run_event_loop(
       Event::UserEvent(app_event) => {
         handle_app_event(app_event, &window, &mut webview, control_flow)
       },
+      // The platform has handed over everything it had this turn, so the
+      // window is read once here rather than at each of the events that might
+      // have changed it. That is what coalesces a drag into one Event per turn
+      // of the loop, and it is also how a change no WindowEvent announces —
+      // a maximize from an OS keyboard shortcut, a hide from the app menu —
+      // still reaches a listener.
+      Event::MainEventsCleared => state::sync(&window, &mut window_state),
       _ => (),
     }
   });
@@ -258,9 +292,20 @@ fn handle_window_event(
   event: WindowEvent, webview: &mut WebView, control_flow: &mut ControlFlow,
 ) {
   match event {
-    WindowEvent::CloseRequested => close(webview, control_flow),
+    WindowEvent::CloseRequested => request_close(webview, control_flow),
     _ => (),
   }
+}
+
+/// Announces the close and then runs it.
+///
+/// Every route in comes through here, so a frontend listening for
+/// `window:close-requested` hears the titlebar button, the window manager and
+/// `window.dry.close()` alike. The Event is a notification and not a vote: the
+/// one thing that can refuse a close is the close hook, which is asked next.
+fn request_close(webview: &mut WebView, control_flow: &mut ControlFlow) {
+  emit_reserved_now(webview, state::CLOSE_REQUESTED, PythonType::Null);
+  close(webview, control_flow);
 }
 
 fn handle_app_event(
@@ -269,7 +314,7 @@ fn handle_app_event(
 ) {
   match event {
     AppEvent::RunJavascript(js) => run_javascript(webview, &js),
-    AppEvent::CloseWindow => close(webview, control_flow),
+    AppEvent::CloseWindow => request_close(webview, control_flow),
     AppEvent::MinimizeWindow => toggle_minimize(window),
     AppEvent::MaximizeWindow => toggle_maximize(window),
     AppEvent::DragWindow => drag(window),
