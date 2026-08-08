@@ -34,6 +34,14 @@ value before it knows what it was told.
   titlebar. The window's state is read once per turn of the event loop and
   compared with the last reading, so a change with no platform event of its own
   is still caught.
+- **A change your Python made is announced identically.** `wv.maximized = True`
+  and a double-click on the titlebar reach a listener as the same
+  `window:maximized`, because both are read off the window rather than
+  reported by whoever asked — and a change the platform refused announces
+  nothing. See [Runtime window control](./runtime-control.md).
+- **`window:hidden` and `window:shown` are reachable through `wv.visible`**,
+  which is the only thing in Dry that takes a window off the screen without
+  closing it. A minimized window is minimized, not hidden.
 - **Sizes and positions are logical pixels**, the same unit `size=` and
   `min_size=` are given, so they are the numbers CSS is working in.
 - **`window:resized` and `window:moved` are emitted at most once per turn of
@@ -48,9 +56,31 @@ value before it knows what it was told.
 - `window:close-requested` is a **notification, not a vote**. The
   [close hook](./close-hook.md) is the only thing that can refuse a close.
 
-`fullscreen` has no Event: macOS reports entering it as a `resized` plus a
-`moved`, and there is nothing in the current surface that enters it, so the
-name would be one that could not be tested.
+`fullscreen` has no Event. `wv.fullscreen = True` does enter it, but what
+arrives is what the platform makes of it — on macOS a `window:maximized` with a
+`window:moved` and a `window:resized` behind it — so a name of its own could
+not be told from what already comes. Read `wv.fullscreen`, or
+`wv.state().fullscreen`, instead of listening for it.
+
+## What is, rather than what changed
+
+An Event only reaches a listener that was registered when it fired. A page that
+has just loaded, or a callback that was not listening, has observed nothing and
+still has to draw a maximize button one way round:
+
+```javascript
+const { maximized } = await window.dry.state();
+```
+
+```python
+if wv.state().maximized:
+    ...
+```
+
+Both answer from the last reading the event loop took — the same reading every
+Event above was a difference from — so the query and the Events can never
+disagree. See
+[Runtime window control](./runtime-control.md#reading-the-whole-window-at-once).
 
 ## Reserved means reserved
 

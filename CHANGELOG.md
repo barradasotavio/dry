@@ -54,6 +54,15 @@ it, in the [migration guide](https://barradasotavio.github.io/dry/migration-0.4.
   `blurred`, `resized`, `moved`, `close-requested` — delivered on the same bus
   to both sides, and fired for OS-initiated changes as much as for
   library-initiated ones.
+- **Runtime window control.** `title`, `size`, `min_size`, `decorations` and
+  `icon_path` now apply to the open window instead of only changing a stored
+  value, and `position`, `visible`, `maximized`, `minimized` and `fullscreen`
+  join them as properties of a window on screen, raising a `RuntimeError`
+  naming the property before `run()`. Every change is announced through the
+  window Events exactly as a change the user made.
+- **A state query on both sides**: `wv.state()` returns a `WindowState`
+  NamedTuple, and `await window.dry.state()` resolves the same reading in the
+  frontend, for a listener or a page that has observed no change yet.
 - **A Root**: a local directory served over an internal protocol so relative
   assets resolve, with per-extension content types, `index.html` for
   directories, `403` for a path escaping the Root and `404` for a missing file.

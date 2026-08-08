@@ -10,7 +10,7 @@ authors = [{ name = "Otávio Barradas" }]
 readme = "README.md"
 license = { text = "MIT" }
 keywords = ["webview", "gui", "rust", "ui", "web", "python"]
-urls = { "Homepage" = "https://github.com/barradasotavio/dry", "Repository" = "https://github.com/barradasotavio/dry.git" }
+urls = { "Homepage" = "https://github.com/barradasotavio/dry", "Documentation" = "https://barradasotavio.github.io/dry/", "Repository" = "https://github.com/barradasotavio/dry.git" }
 classifiers = [
     "Intended Audience :: Developers",
     "Programming Language :: Python :: 3 :: Only",

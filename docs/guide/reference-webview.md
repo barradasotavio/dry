@@ -45,12 +45,38 @@ Assigning any of them except `title`, `size`, `min_size`, `decorations` and
 | `off(name, listener)` | Takes one registration off |
 | `emit(name, value=None)` | Emits an Event to the frontend |
 | `eval_js(script)` | Evaluates a script in the page, reading nothing back |
+| `state()` | Returns a `WindowState`: everything the window is doing, in one reading |
 
 `on` and `off` work before `run()`. `emit` and `eval_js` need a running window
-and raise a `BridgeError` without one.
+and raise a `BridgeError` without one; `state()` needs one and raises a
+`RuntimeError` without one.
 
-Runtime control of the open window — moving it, resizing it, hiding it,
-querying its state — is [not in the library yet](./runtime-control.md).
+## The open window
+
+Five of the options above go on applying once the window is open — `title`,
+`size`, `min_size`, `decorations` and `icon_path` — and beside them are five
+states that exist only then. These are not constructor arguments, and reading
+or assigning one before `run()` raises a `RuntimeError` naming it.
+
+| Property | Type | Means |
+| --- | --- | --- |
+| `position` | `tuple[int, int]` | Where the window's top-left corner sits, logical pixels |
+| `visible` | `bool` | Whether it is on screen; `False` hides it without closing it |
+| `maximized` | `bool` | Whether it fills its screen |
+| `minimized` | `bool` | Whether it is minimized to the dock or taskbar |
+| `fullscreen` | `bool` | Whether it has taken over its screen |
+
+```python
+from dry import WindowState
+```
+
+`wv.state()` returns a `WindowState`, a `NamedTuple` of `maximized`,
+`minimized`, `fullscreen`, `visible`, `focused`, `size` and `position`. The
+frontend asks for the same reading with `await window.dry.state()`.
+
+Every change made through these reaches the [window Events](./window-events.md)
+exactly as a change the user made. See
+[Runtime window control](./runtime-control.md).
 
 ## Read-only behaviour worth knowing
 

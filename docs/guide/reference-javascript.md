@@ -35,6 +35,13 @@ Values crossing in either direction obey the
 | `dry.close()` | Asks to close, through the close hook |
 | `dry.drag()` | Starts a window drag from your own handler |
 | `dry.resize(direction)` | Starts a resize drag from an edge or corner |
+| `dry.state()` | Resolves with what the window is doing right now |
+
+`dry.state()` returns a Promise for `{maximized, minimized, fullscreen,
+visible, focused, size: {width, height}, position: {x, y}}` — the same reading
+`wv.state()` gives Python, in the shape the window Events use. Every call
+waiting on the same trip resolves with the same reading. See
+[Runtime window control](./runtime-control.md#asking-from-the-frontend).
 
 `direction` is one of `'north'`, `'north-east'`, `'east'`, `'south-east'`,
 `'south'`, `'south-west'`, `'west'`, `'north-west'`. `dry.resize` is meant to
@@ -55,11 +62,12 @@ See [Custom titlebars](./titlebar.md).
 Names beginning with `window:` are Dry's own. Listen for them freely; emitting
 one is refused. The full list is in [Window Events](./window-events.md).
 
-## Two members that are not yours
+## Three members that are not yours
 
-`dry.resolveCall` and `dry.deliverEvent` exist, non-enumerable, and are how
-Rust settles a Promise and hands an Event to your listeners. They are
-implementation, not surface: do not call them.
+`dry.resolveCall`, `dry.deliverEvent` and `dry.resolveState` exist,
+non-enumerable, and are how Rust settles a Promise, hands an Event to your
+listeners and answers a state query. They are implementation, not surface: do
+not call them.
 
 The pending-call store and the listener register live in closures, so no page
 script can read or tamper with another script's in-flight Calls or listeners.

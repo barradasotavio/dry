@@ -52,7 +52,8 @@ the interpreter, so nothing written after it runs.
 
 Render an HTML string, a URL, or a directory of compiled assets. Call Python
 from JavaScript and get a `Promise` back. Emit Events in either direction.
-Drop the native titlebar and draw your own. More examples are in
+Drop the native titlebar and draw your own. Move, resize, hide and read the
+open window from Python. More examples are in
 [`examples/`](https://github.com/barradasotavio/dry/tree/master/examples).
 
 ## Documentation
@@ -66,6 +67,9 @@ site](https://barradasotavio.github.io/dry/):
   Events, and the contract on what may cross
 - [Custom titlebars](https://barradasotavio.github.io/dry/titlebar.html) and
   [window Events](https://barradasotavio.github.io/dry/window-events.html)
+- [Runtime window
+  control](https://barradasotavio.github.io/dry/runtime-control.html) — moving,
+  resizing, hiding and reading the open window from Python
 - [Errors and logging](https://barradasotavio.github.io/dry/errors.html)
 - [Reference](https://barradasotavio.github.io/dry/reference-webview.html)
 - [Architecture decisions](https://barradasotavio.github.io/dry/decisions/0001.html)

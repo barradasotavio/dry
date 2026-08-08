@@ -80,5 +80,13 @@ double-clicks the bar or reaches for an OS shortcut. Listen instead:
 </script>
 ```
 
-See [Window Events](./window-events.md). A full example is
+A page that has just loaded has heard no Event yet, so ask once on the way in:
+
+```javascript
+const { maximized } = await window.dry.state();
+icon.src = maximized ? RESTORE : MAXIMIZE;
+```
+
+See [Window Events](./window-events.md) and
+[Runtime window control](./runtime-control.md). A full example is
 [`examples/titlebar.py`](https://github.com/barradasotavio/dry/tree/master/examples/titlebar.py).

@@ -73,7 +73,20 @@ wv.api = {'hello': hello}
 | `dev_tools` | raises |
 | `app_id`, `user_data_folder` | raises |
 | `on_close` | raises |
-| `title`, `size`, `min_size`, `decorations`, `icon_path` | assignable, but does not yet move the window — see [Runtime window control](./runtime-control.md) |
+| `title`, `size`, `min_size`, `decorations`, `icon_path` | assignable, and applied to the open window |
 
 Since `run()` never returns, "after `run()`" means from inside a callback: an
 Api callable, an Event listener or a close hook.
+
+Beside those five settings are five states a window only has once it is on
+screen — `position`, `visible`, `maximized`, `minimized` and `fullscreen` —
+which are not constructor arguments at all, and a `wv.state()` that reads the
+window back in one piece. They are all in
+[Runtime window control](./runtime-control.md).
+
+`decorations` assigned at runtime adds or removes the native titlebar, but does
+not add or remove the [resize edges](./titlebar.md#resize-edges) an undecorated
+Webview draws for itself: those are installed from the `decorations` the
+constructor was given. A window that means to toggle its titlebar should be
+built with `decorations=False` — see
+[Runtime window control](./runtime-control.md#decorations-at-runtime-does-not-add-resize-edges).
