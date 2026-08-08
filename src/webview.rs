@@ -1,19 +1,30 @@
 use std::{
   borrow::Cow,
   collections::HashMap,
+  ffi::CStr,
   fs,
   path::{Path, PathBuf},
+  sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+  },
+  thread,
+  time::Duration,
 };
 
-use pyo3::{Py, PyAny};
+use pyo3::{
+  Py, PyAny, PyResult, Python,
+  types::{PyAnyMethods, PyDict, PyDictMethods},
+};
 use tao::{event_loop::EventLoopProxy, window::Window};
 use wry::{
-  Error as WryError, WebContext, WebView, WebViewBuilder,
+  Error as WryError, PageLoadEvent, WebContext, WebView, WebViewBuilder,
   http::{Request, header::CONTENT_TYPE, response::Response},
 };
 
 use crate::{
   api::{API_JS, handle_api_requests},
+  errors::WebviewError,
   events::AppEvent,
   logs,
   window::{
@@ -77,12 +88,175 @@ pub fn build_webview(
 
         builder.build(window)?
       },
-      None => builder.with_url(url).build(window)?,
+      None => {
+        let arrived = Arc::new(AtomicBool::new(false));
+        let watched = Arc::clone(&arrived);
+
+        builder = builder.with_on_page_load_handler(move |event, at| {
+          if matches!(event, PageLoadEvent::Finished) && at != BLANK_PAGE {
+            watched.store(true, Ordering::Relaxed);
+          }
+        });
+
+        let webview = builder.with_url(&url).build(window)?;
+        watch_navigation(url, arrived);
+        webview
+      },
     },
     (None, None) => panic!("No content provided."),
   };
 
   Ok(webview)
+}
+
+/// How long a URL Content is given to arrive before Dry goes and finds out why
+/// it has not. Long enough that an ordinary page beats it, short enough that a
+/// developer staring at a blank window has not yet started guessing.
+const NAVIGATION_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// How long the diagnosis itself may take before it gives up.
+const PROBE_TIMEOUT: f64 = 5.0;
+
+/// The schemes Dry can say anything useful about. A Root is served from inside
+/// this process and answers its own failures with a 403 or a 404 the developer
+/// can read in the window, so it is not watched.
+const PROBED_SCHEMES: [&str; 3] = ["http://", "https://", "file://"];
+
+/// What the Webview settles on when a navigation never got off the ground, and
+/// exactly what the developer is looking at: the blank window. It is not an
+/// arrival, whatever the page-load handler calls it.
+const BLANK_PAGE: &str = "about:blank";
+
+/// Watches one navigation, and only the first.
+///
+/// wry has no failed-navigation hook. On macOS the failure reaches
+/// WKWebView's `didFailProvisionalNavigation:`, which wry's navigation
+/// delegate does not implement at all, so nothing is forwarded. What wry does
+/// forward, `with_on_page_load_handler`, is measurably useless on its own:
+/// traced against a refused connection it reports Started **and Finished**, at
+/// `about:blank` — the load "succeeds" onto the blank page. Traced against an
+/// unresolvable host it reports nothing whatsoever. So neither the presence of
+/// Finished nor its absence decides anything, and both have to be read
+/// together: an arrival is a Finished at a page that is not `about:blank`, and
+/// a timer covers the navigation that never reports at all.
+///
+/// A page that has not arrived is then diagnosed from Python, because the
+/// answer lives in a library the process already has. `urllib` and `ssl` name
+/// an untrusted certificate, a refused connection and an unresolvable host
+/// apart, which is precisely what the developer needs and what no webview
+/// callback here offers — and it costs no dependency.
+///
+/// Nothing is reported unless the diagnosis reproduces a concrete failure. A
+/// page that is merely slow, or that loaded and rendered nothing, stays out of
+/// the log at anything above debug.
+fn watch_navigation(url: String, arrived: Arc<AtomicBool>) {
+  if !PROBED_SCHEMES.iter().any(|scheme| url.starts_with(scheme)) {
+    return;
+  }
+
+  thread::spawn(move || {
+    thread::sleep(NAVIGATION_TIMEOUT);
+
+    if arrived.load(Ordering::Relaxed) {
+      return;
+    }
+
+    match diagnose(&url) {
+      Some(reason) => logs::error(
+        logs::WEBVIEW,
+        format!("The Webview could not load '{url}': {reason}"),
+      ),
+      None => logs::debug(
+        logs::WEBVIEW,
+        format!(
+          "The Webview has not finished loading '{url}', but the address \
+           answered when Dry asked. The page itself may be slow or empty."
+        ),
+      ),
+    }
+  });
+}
+
+/// Why an address did not load, in words, or `None` when Dry reached it and
+/// has nothing to accuse.
+fn diagnose(url: &str) -> Option<String> {
+  let (kind, detail) = Python::attach(|py| probe(py, url).ok())?;
+  let headline = headline(&kind)?;
+  if detail.is_empty() {
+    return Some(headline.to_string());
+  }
+  Some(format!("{headline}. {detail}"))
+}
+
+/// The sentence a developer reads first. Every kind the probe can return is
+/// named here, and the three the issue turns on — an untrusted certificate, a
+/// refused connection, an unresolvable host — read differently enough to tell
+/// apart from the log line alone.
+fn headline(kind: &str) -> Option<&'static str> {
+  match kind {
+    "certificate" => Some("the server's TLS certificate is not trusted"),
+    "tls" => Some("the TLS connection failed"),
+    "host" => Some("the host could not be resolved"),
+    "refused" => Some("the connection was refused"),
+    "timeout" => Some("the connection timed out"),
+    "missing" => Some("there is no file at that path"),
+    "failed" => Some("the connection failed"),
+    // `reachable`, and anything a later probe learns to say that this build
+    // does not understand. Silence beats a guess.
+    _ => None,
+  }
+}
+
+/// Asks the address the same question a developer would, with the standard
+/// library they already have, and names what came back.
+const PROBE: &CStr = cr#"
+import socket
+import ssl
+import urllib.error
+import urllib.request
+
+
+def classify(reason):
+    detail = f'{type(reason).__name__}: {reason}'
+    if isinstance(reason, ssl.SSLCertVerificationError):
+        return ('certificate', detail)
+    if isinstance(reason, ssl.SSLError):
+        return ('tls', detail)
+    if isinstance(reason, socket.gaierror):
+        return ('host', detail)
+    if isinstance(reason, ConnectionRefusedError):
+        return ('refused', detail)
+    if isinstance(reason, TimeoutError):
+        return ('timeout', detail)
+    if isinstance(reason, FileNotFoundError):
+        return ('missing', detail)
+    return ('failed', detail)
+
+
+def probe(url, timeout):
+    try:
+        urllib.request.urlopen(url, timeout=timeout).close()
+    except urllib.error.HTTPError as error:
+        # The address answered, just not with a 200. Whatever left the window
+        # blank, it was not the connection.
+        return ('reachable', f'HTTP {error.code}')
+    except urllib.error.URLError as error:
+        return classify(error.reason)
+    except Exception as error:
+        return classify(error)
+    return ('reachable', '')
+"#;
+
+/// Runs the probe in a scope of its own, so nothing of Dry's diagnosis is left
+/// behind in `sys.modules` for an application to trip over.
+fn probe(py: Python<'_>, url: &str) -> PyResult<(String, String)> {
+  let scope = PyDict::new(py);
+  py.run(PROBE, Some(&scope), None)?;
+  scope
+    .get_item("probe")?
+    .ok_or_else(|| WebviewError::new_err("The probe did not define `probe`."))?
+    .call1((url, PROBE_TIMEOUT))?
+    .extract::<(String, String)>()
 }
 
 /// A Root: a local directory served to the Webview, one file per request.

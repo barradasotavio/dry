@@ -1,12 +1,15 @@
-//! Tests for serving a Root: which file a request reaches, which requests are
-//! refused, and the content type a file is served with.
+//! Tests for serving a Root and for diagnosing a navigation that did not
+//! arrive: which file a request reaches, which requests are refused, the
+//! content type a file is served with, and what Dry says about an address it
+//! could not load.
 //!
-//! Everything here runs against a temporary directory on disk. Nothing opens a
-//! window or runs an event loop.
+//! Everything here runs against a temporary directory on disk or against the
+//! loopback interface. Nothing opens a window or runs an event loop.
 
 use super::*;
 use std::{
-  sync::atomic::{AtomicU32, Ordering},
+  net::TcpListener,
+  sync::atomic::AtomicU32,
   time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -217,4 +220,85 @@ fn percent_decoding_leaves_a_broken_escape_alone() {
   assert_eq!(percent_decode("/100%.css"), "/100%.css");
   assert_eq!(percent_decode("/a%zz.css"), "/a%zz.css");
   assert_eq!(percent_decode("/a%2"), "/a%2");
+}
+
+/// A port nothing is listening on: bound, read back, and dropped, so the number
+/// is real and free by the time it is handed out.
+fn closed_port() -> u16 {
+  let listener =
+    TcpListener::bind("127.0.0.1:0").expect("a loopback port should be available");
+  listener
+    .local_addr()
+    .expect("a bound listener should have an address")
+    .port()
+}
+
+/// The three failures this exists for read differently. A developer who has
+/// only the one line still knows which of them they are looking at.
+#[test]
+fn the_three_failures_read_differently() {
+  let certificate = headline("certificate").expect("an untrusted certificate is named");
+  let refused = headline("refused").expect("a refused connection is named");
+  let host = headline("host").expect("an unresolvable host is named");
+
+  assert!(certificate.contains("certificate"));
+  assert!(refused.contains("refused"));
+  assert!(host.contains("resolved"));
+
+  assert_ne!(certificate, refused);
+  assert_ne!(refused, host);
+  assert_ne!(certificate, host);
+}
+
+/// An address Dry reached is an address Dry has nothing to say about. A blank
+/// window whose server answered is not a navigation failure.
+#[test]
+fn a_reachable_address_is_not_accused() {
+  assert_eq!(headline("reachable"), None);
+  assert_eq!(headline("something a later probe learns to say"), None);
+}
+
+#[test]
+fn a_refused_connection_is_named_as_one() {
+  let url = format!("http://127.0.0.1:{}/", closed_port());
+
+  let reason = Python::attach(|py| probe(py, &url)).expect("the probe should answer");
+
+  assert_eq!(reason.0, "refused");
+  assert!(reason.1.contains("ConnectionRefusedError"), "{}", reason.1);
+
+  let reported = diagnose(&url).expect("a refused connection is reported");
+  assert!(
+    reported.contains("the connection was refused"),
+    "{reported}"
+  );
+}
+
+#[test]
+fn a_missing_file_is_named_as_one() {
+  let url = "file:///dry/no/such/file.html";
+
+  let reason = Python::attach(|py| probe(py, url)).expect("the probe should answer");
+
+  assert_eq!(reason.0, "missing");
+}
+
+/// Only the schemes Dry can say something useful about are watched. A Root
+/// answers its own failures in the window, so watching it would be noise.
+#[test]
+fn only_addresses_dry_can_ask_about_are_watched() {
+  let watched = |url: &str| PROBED_SCHEMES.iter().any(|scheme| url.starts_with(scheme));
+
+  assert!(watched("https://example.invalid/"));
+  assert!(watched("http://127.0.0.1:8081/"));
+  assert!(watched("file:///tmp/index.html"));
+  assert!(!watched(ROOT_ORIGIN));
+}
+
+/// A failed navigation still finishes, on the blank page. Reading that as an
+/// arrival is what kept the failure invisible, so the blank page is named and
+/// stays named.
+#[test]
+fn the_blank_page_is_not_an_arrival() {
+  assert_eq!(BLANK_PAGE, "about:blank");
 }
