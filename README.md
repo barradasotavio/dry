@@ -55,24 +55,32 @@ wv.root = Path(__file__).parent / "dist"
 
 `wv.root` is what a compiled frontend wants. The directory is served over an internal protocol, so relative assets — `./assets/index.js`, `<img src="logo.png">` — resolve against it, each file with the content type its extension implies. A request that would resolve outside the directory is refused, and a request for a file that is not there returns a 404 your frontend can observe. Both `wv.root` and `wv.icon_path` accept a `str` or any `os.PathLike`.
 
-If your UI needs to come from a server, know that `wv.run()` blocks the main thread. Consider running the server from a separate thread (preferably a daemon one, which will shutdown along with the main thread).
+#### Serving from a local server
+
+Most people reaching for a local server want `wv.root`, which serves the same directory with no server to start and no port to pick. Reach for a server only when you already have one — a dev server with hot reload, or an application that genuinely speaks HTTP.
+
+When you do, run it in a separate **process**, not a thread. `wv.run()` holds the GIL for as long as the window is open, so a server started in a `threading.Thread` never gets to run: it accepts no connection while the Webview is up, and the window simply stays blank.
 
 ```python
-import threading
+from multiprocessing import Process
 from dry import Webview
 
 def serve_files():
-    # Your server logic here
+    # Your server logic here, blocking
 
 if __name__ == "__main__":
 
-    thread = threading.Thread(target=serve_files, daemon=True)
-    thread.start()
+    server = Process(target=serve_files, daemon=True)
+    server.start()
 
     wv = Webview()
     wv.url = "http://localhost:8000"
     wv.run()
 ```
+
+A daemon process shuts down along with the parent. See [`examples/server.py`](https://github.com/barradasotavio/dry/tree/master/examples/server.py) for a working one.
+
+A plain `http://` address loads on macOS as it does on Windows — App Transport Security does not stand between a Python process and its own local server. What does fail there, and fails silently, is **HTTPS with a certificate the system does not trust**: WKWebView abandons the navigation with no prompt to accept the certificate and no error you can see, leaving a blank window. Serve local development over plain HTTP on `localhost` rather than behind a self-signed certificate.
 
 ### Custom Titlebar
 
