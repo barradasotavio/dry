@@ -84,11 +84,14 @@ api: dict[str, Callable[..., Any]] = {
 }
 
 if __name__ == '__main__':
-    wv = Webview()
-    wv.title = 'Hello World'
-    wv.size = wv.min_size = (1080, 720)
-    wv.icon_path = ICON_PATH
-    wv.html = HTML
-    wv.api = api
-    wv.dev_tools = True
+    wv = Webview(
+        title='Hello World',
+        app_id='com.example.dry.hello-world',
+        size=(1080, 720),
+        min_size=(1080, 720),
+        icon_path=ICON_PATH,
+        html=HTML,
+        api=api,
+        dev_tools=True,
+    )
     wv.run()

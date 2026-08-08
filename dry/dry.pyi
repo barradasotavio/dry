@@ -1,20 +1,9 @@
-from typing import Any, Callable, TypedDict
+from typing import Any
 
-class Settings(TypedDict):
-    title: str
-    min_size: tuple[int, int]
-    size: tuple[int, int]
-    decorations: bool | None
-    icon_path: str | None
-    html: str | None
-    url: str | None
-    api: dict[str, Callable[..., Any]] | None
-    dev_tools: bool | None
-    user_data_folder: str
-
-def run(
-    settings: Settings,
-) -> None: ...
+# The settings a Webview is built from are declared once, in `dry.interface`.
+# This is the internal call that carries them across to Rust, and the mapping
+# it takes is not part of the public surface.
+def run(settings: dict[str, Any]) -> None: ...
 def send_event(message: str) -> None: ...
 
 class DryError(Exception): ...

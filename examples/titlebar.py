@@ -9,11 +9,14 @@ with open(HTML_PATH, encoding='utf-8') as f:
     HTML = f.read()
 
 if __name__ == '__main__':
-    wv = Webview()
-    wv.title = 'Titlebar Example'
-    wv.size = wv.min_size = (1080, 720)
-    wv.decorations = False
-    wv.icon_path = ICON_PATH
-    wv.html = HTML
-    wv.dev_tools = True
+    wv = Webview(
+        title='Titlebar Example',
+        app_id='com.example.dry.titlebar',
+        size=(1080, 720),
+        min_size=(1080, 720),
+        decorations=False,
+        icon_path=ICON_PATH,
+        html=HTML,
+        dev_tools=True,
+    )
     wv.run()

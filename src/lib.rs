@@ -40,6 +40,7 @@ struct Settings {
   api: Option<HashMap<String, Py<PyAny>>>,
   dev_tools: bool,
   user_data_folder: String,
+  default: Option<Py<PyAny>>,
 }
 
 /// A Webview open on screen, on its way to the event loop.
@@ -65,7 +66,11 @@ impl Opened {
 }
 
 #[pyfunction]
-fn run(py: Python<'_>, settings: Settings) -> PyResult<()> {
+fn run(py: Python<'_>, mut settings: Settings) -> PyResult<()> {
+  // The `default=` hook ADR-0002 promises, installed before anything can
+  // cross the Bridge.
+  types::set_default_hook(settings.default.take());
+
   let opened = catch_panic(|| open(py, settings))?;
 
   // The GIL goes back to Python before the event loop takes the main thread,

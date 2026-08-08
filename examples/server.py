@@ -27,10 +27,13 @@ if __name__ == '__main__':
     server = Process(target=serve, daemon=True)
     server.start()
 
-    wv = Webview()
-    wv.title = 'Server Example'
-    wv.size = wv.min_size = (1080, 720)
-    wv.icon_path = ICON_PATH
-    wv.url = f'http://localhost:{PORT}'
-    wv.dev_tools = True
+    wv = Webview(
+        title='Server Example',
+        app_id='com.example.dry.server',
+        size=(1080, 720),
+        min_size=(1080, 720),
+        icon_path=ICON_PATH,
+        url=f'http://localhost:{PORT}',
+        dev_tools=True,
+    )
     wv.run()

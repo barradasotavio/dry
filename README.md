@@ -25,9 +25,19 @@ Here's a quick example of how to use Dry to create a simple webview:
 ```python
 from dry import Webview
 
-wv = Webview()
-wv.title = "My Python App!"
-wv.html = "<h1>Hello, World!</h1>"
+wv = Webview(
+    title="My Python App!",
+    app_id="com.example.myapp",
+    html="<h1>Hello, World!</h1>",
+)
+wv.run()
+```
+
+Every option is a keyword argument, so your editor tells you what there is and a typo raises instead of quietly doing nothing. Each one is also a property, for values you only work out later:
+
+```python
+wv = Webview(app_id="com.example.myapp")
+wv.html = render_page()
 wv.run()
 ```
 
@@ -37,20 +47,20 @@ For more examples, check out the [examples directory](https://github.com/barrada
 
 ### Explicit Content
 
-A `Webview` renders exactly one content, declared as exactly one of three mutually exclusive properties. Declaring more than one, or none, raises.
+A `Webview` renders exactly one content, declared as exactly one of three mutually exclusive options. Declaring more than one, or none, raises.
 
 ```python
 from dry import Webview
 from pathlib import Path
 
 # An HTML string
-wv.html = "<h1>Hello, World!</h1>"
+Webview(html="<h1>Hello, World!</h1>")
 
 # A URL
-wv.url = "http://localhost:8000"
+Webview(url="http://localhost:8000")
 
 # A root: a directory served to the webview, starting at its index.html
-wv.root = Path(__file__).parent / "dist"
+Webview(root=Path(__file__).parent / "dist")
 ```
 
 `wv.root` is what a compiled frontend wants. The directory is served over an internal protocol, so relative assets — `./assets/index.js`, `<img src="logo.png">` — resolve against it, each file with the content type its extension implies. A request that would resolve outside the directory is refused, and a request for a file that is not there returns a 404 your frontend can observe. Both `wv.root` and `wv.icon_path` accept a `str` or any `os.PathLike`.
@@ -73,8 +83,7 @@ if __name__ == "__main__":
     server = Process(target=serve_files, daemon=True)
     server.start()
 
-    wv = Webview()
-    wv.url = "http://localhost:8000"
+    wv = Webview(url="http://localhost:8000")
     wv.run()
 ```
 
@@ -87,7 +96,7 @@ A plain `http://` address loads on macOS as it does on Windows — App Transport
 Dry supports custom titlebars, allowing you to create a unique look for your application. You tell the `Webview` class to hide decorations like this:
 
 ```python
-wv.decorations = False
+wv = Webview(decorations=False, html=HTML)
 ```
 
 And then you can use `data-drag-region` to define the draggable area in your HTML, which will probably be your custom titlebar:
@@ -135,8 +144,7 @@ api = {
     "dumbSum": dumb_sum
 }
 
-wv = Webview()
-wv.api = api
+wv = Webview(api=api, html=HTML)
 wv.run()
 ```
 
@@ -178,6 +186,35 @@ A few consequences worth knowing:
 -   `datetime`, `Decimal`, `Enum`, dataclasses and anything else raise unless
     you convert them yourself.
 
+#### Converting your own types
+
+Rather than converting at every call site, hand the `Webview` a `default`, the
+same hook `json.dumps(default=...)` takes. It is called with any value outside
+the contract and must return one inside it:
+
+```python
+from dataclasses import asdict, is_dataclass
+from datetime import datetime
+from decimal import Decimal
+
+def default(value):
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, Decimal):
+        return float(value)
+    if is_dataclass(value):
+        return asdict(value)
+    raise TypeError(f"{type(value).__name__} is not JSON serializable")
+
+wv = Webview(html=HTML, api=api, default=default)
+```
+
+What it returns is checked in turn, so a hook may return another value the hook
+itself handles. Raise from it for anything you do not want to convert, and the
+Call rejects as it would have without a hook. It is the last thing consulted,
+so it is never asked about a `set`, `bytes` or a dictionary key — those are
+refused before it, for the reasons above.
+
 ### Errors and Logging
 
 Everything Dry can fail at raises a `DryError`, so you can catch what you mean:
@@ -207,23 +244,58 @@ import logging
 logging.basicConfig(level=logging.DEBUG)
 ```
 
-### Other
+### Where your application's data lives
 
-The `Webview` class has a few options you can set through its properties:
+Cookies, local storage and cache belong to an **app id** — a stable
+reverse-domain identifier such as `com.example.myapp` — not to the window
+title. Rename the window and the session survives; two applications that
+happen to share a title no longer share a cookie jar; a title containing a
+colon no longer produces a path Windows refuses.
 
-| Property         | Description                                                         |
-| ---------------- | ------------------------------------------------------------------- |
-| title            | The window title. Defaults to 'My Dry Webview'.                     |
-| min_size         | Minimum window dimensions (width, height).                          |
-| size             | Initial window dimensions (width, height).                          |
-| decorations      | Whether to show window decorations (title bar, borders).            |
-| icon_path        | Path to the window icon file (.ico format).                         |
-| html             | An HTML string to render.                                           |
-| url              | A URL to load.                                                      |
-| root             | A directory to serve, starting at its index.html.                   |
-| api              | JavaScript-accessible Python functions.                             |
-| dev_tools        | Whether to enable developer tools.                                  |
-| user_data_folder | Path to store user data. Defaults to temp folder.                   |
+```python
+wv = Webview(app_id="com.example.myapp", html=HTML)
+```
+
+The data lands under the directory the operating system keeps application data
+in, so nothing clears it between runs:
+
+| Platform | Location                                                |
+| -------- | ------------------------------------------------------- |
+| Windows  | `%LOCALAPPDATA%\<app id>`                               |
+| macOS    | `~/Library/Application Support/<app id>`                |
+| Linux    | `$XDG_DATA_HOME/<app id>`, or `~/.local/share/<app id>` |
+
+Leave `app_id` out and one is derived from your entry-point script, which is
+enough to develop against but not something to ship: declare your own before
+you release, or the folder moves when your script does. `user_data_folder=`
+overrides the location outright, and is rarely what you want.
+
+### Other options
+
+| Option           | Description                                                              |
+| ---------------- | ------------------------------------------------------------------------ |
+| title            | The window title. Defaults to 'My Dry Webview'.                          |
+| size             | Initial window dimensions in logical pixels. Defaults to (800, 600).     |
+| min_size         | Minimum window dimensions in logical pixels. Defaults to (800, 600).     |
+| decorations      | Whether to show window decorations (title bar, borders).                 |
+| icon_path        | Path to the window icon file (.ico format).                              |
+| html             | An HTML string to render.                                                |
+| url              | A URL to load.                                                           |
+| root             | A directory to serve, starting at its index.html.                        |
+| api              | JavaScript-accessible Python functions.                                  |
+| dev_tools        | Whether to enable developer tools.                                       |
+| app_id           | The identifier deciding where this application's data lives.             |
+| user_data_folder | Where that data is stored, overriding what the app id chooses.           |
+| default          | Converts a value outside the Bridge contract, as `json.dumps` does.      |
+
+Dimensions are **logical pixels**, independent of display scaling: a window
+declared as 800 by 600 opens at that apparent size on a display scaled to 150%
+as on one scaled to 100%.
+
+The options the `Webview` reads only while it is being built — the content,
+`api`, `dev_tools`, `app_id`, `user_data_folder` and `default` — raise if you
+assign them after `run()`, naming the one you assigned, rather than silently
+doing nothing.
 
 ## Current Status
 

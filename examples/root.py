@@ -10,10 +10,13 @@ ICON_PATH = Path(__file__).parent / 'icon.ico'
 ROOT_PATH = Path(__file__).parent / 'root'
 
 if __name__ == '__main__':
-    wv = Webview()
-    wv.title = 'Root Example'
-    wv.size = wv.min_size = (1080, 720)
-    wv.icon_path = ICON_PATH
-    wv.root = ROOT_PATH
-    wv.dev_tools = True
+    wv = Webview(
+        title='Root Example',
+        app_id='com.example.dry.root',
+        size=(1080, 720),
+        min_size=(1080, 720),
+        icon_path=ICON_PATH,
+        root=ROOT_PATH,
+        dev_tools=True,
+    )
     wv.run()

@@ -4,10 +4,13 @@ from dry import Webview
 
 ICON_PATH = Path(__file__).parent / 'icon.ico'
 
-webview = Webview()
-webview.title = 'My Dry Webview'
-webview.size = webview.min_size = (1200, 800)
-webview.icon_path = ICON_PATH
-webview.url = 'https://www.example.com'
-webview.dev_tools = True
+webview = Webview(
+    title='My Dry Webview',
+    app_id='com.example.dry.minimal',
+    size=(1200, 800),
+    min_size=(1200, 800),
+    icon_path=ICON_PATH,
+    url='https://www.example.com',
+    dev_tools=True,
+)
 webview.run()
