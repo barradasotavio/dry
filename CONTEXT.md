@@ -36,6 +36,10 @@ _Avoid_: Static files, assets folder, file path
 An element marked `data-drag-region` that moves the window when dragged, standing in for a native titlebar. Its whole subtree drags with it, except where a descendant marked `data-no-drag-region` opts its own subtree back out.
 _Avoid_: Titlebar, header
 
+**Resize edge**:
+One of the eight thin strips an undecorated Webview draws over its own border, standing in for a native window frame. A grab on one resizes the window from that edge or corner. On Windows the platform takes the drag over; on macOS it has no such path and the frontend runs the drag itself. See [ADR-0004](./docs/adr/0004-macos-resizes-an-undecorated-window-from-the-frontend.md).
+_Avoid_: Border, handle, gripper
+
 **Bridge contract**:
 The closed set of values that may cross the Bridge: the JSON data model, following `json.dumps` / `json.loads` semantics. A value outside it raises rather than converting silently. See [ADR-0002](./docs/adr/0002-the-bridge-contract-is-the-json-data-model.md).
 _Avoid_: Type mapping, serialization rules

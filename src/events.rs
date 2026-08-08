@@ -6,7 +6,7 @@ use tao::{
 };
 use wry::WebView;
 
-use crate::logs;
+use crate::{logs, window::resize};
 
 pub static PROXY: OnceLock<Mutex<Option<EventLoopProxy<AppEvent>>>> = OnceLock::new();
 
@@ -31,6 +31,7 @@ pub enum AppEvent {
   MaximizeWindow,
   CloseWindow,
   ResizeWindow(ResizeDirection),
+  ResizeDragged(resize::Drag),
   FromPython(String),
 }
 
@@ -86,6 +87,7 @@ fn handle_app_event(
         );
       }
     },
+    AppEvent::ResizeDragged(drag) => resize::apply(&drag, window),
     AppEvent::FromPython(message) => handle_python_event(&message),
   }
 }
