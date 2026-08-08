@@ -72,6 +72,12 @@ jobs:
       - name: Import the Webview from Python
         run: uv run --no-sync python -c 'from dry import Webview; Webview()'
 
+      # Opens a real window and closes it from JavaScript. The runners give
+      # both platforms a desktop session, so this is a genuine end-to-end run,
+      # not a headless stand-in. Stdlib unittest, so it adds no dependency.
+      - name: Run the Python tests
+        run: uv run --no-sync python -m unittest discover -s tests -v
+
   pyright:
     # Pyright is the compatibility gate: users get it inside their editors, so a
     # py.typed package validated only by Pyrefly can still ship errors to them.
