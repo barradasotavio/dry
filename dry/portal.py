@@ -45,6 +45,21 @@ from logging import getLogger
 from threading import Lock, Thread
 from typing import Any, Awaitable, Callable, Protocol
 
+try:
+    from .signature import mismatch
+except ImportError:
+    # `src/api/tests.rs` loads this file on its own, outside the package, so
+    # that testing the portal does not drag the extension module in with it.
+    # There is no sibling to import then, and an unchecked Call is what
+    # `mismatch` already answers whenever it cannot read a declaration.
+    def mismatch(
+        name: str,
+        function: Callable[..., object],
+        arguments: tuple[object, ...],
+    ) -> TypeError | None:
+        return None
+
+
 _LOGGER = getLogger('dry.bridge')
 
 # How long a closing portal waits, at each step, before giving up on it.
@@ -118,7 +133,15 @@ def dispatch(
     else goes to the thread pool, and if what it returns turns out to be
     awaitable it finishes on the loop too, which is what makes a callable
     object with an `async def __call__` work like an `async def`.
+
+    A Call whose arguments contradict what the callback declared is refused
+    here, before any of it runs: see `dry/signature.py`.
     """
+    refusal = mismatch(name, function, arguments)
+    if refusal is not None:
+        _reject(name, refusal, completion)
+        return
+
     loop, executor = _running()
 
     if iscoroutinefunction(function):
