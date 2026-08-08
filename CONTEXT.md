@@ -44,6 +44,10 @@ _Avoid_: Border, handle, gripper
 The closed set of values that may cross the Bridge: the JSON data model, following `json.dumps` / `json.loads` semantics. A value outside it raises rather than converting silently. See [ADR-0002](./docs/adr/0002-the-bridge-contract-is-the-json-data-model.md).
 _Avoid_: Type mapping, serialization rules
 
+**Close hook**:
+The callable asked before the Webview closes, and the one thing that can refuse a close. Returning `False` keeps the window open; anything else lets it go. Every route in — the titlebar button, the window manager, `window.dry.close()` — is asked, and the ordered shutdown that follows an agreement is Dry's, because the process exits under it. See [ADR-0001](./docs/adr/0001-dry-owns-the-process-and-the-asyncio-loop.md).
+_Avoid_: On close, before quit, shutdown handler
+
 **App id**:
 A stable reverse-domain identifier for the application, such as `com.example.myapp`. Determines where the Webview stores cookies, local storage and cache, so that data survives a change of title.
 _Avoid_: App name, bundle id
