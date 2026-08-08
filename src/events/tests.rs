@@ -2,17 +2,17 @@
 //!
 //! What the event loop does on a close request is two calls into Python with a
 //! decision between them, so that is what is exercised here: the portal is
-//! loaded on its own and held up to the same `allowed_by` and
-//! `shut_down_through` the event loop uses, in the same order. A refusal, an
-//! agreement, a hook that raises, and a Call still running when the close
-//! comes are all visible from there.
+//! loaded without the `dry` package around it and held up to the same
+//! `allowed_by` and `shut_down_through` the event loop uses, in the same
+//! order. A refusal, an agreement, a hook that raises, and a Call still
+//! running when the close comes are all visible from there.
 
 use pyo3::{
-  Python,
+  Bound, Python,
   types::{PyAnyMethods, PyDict, PyDictMethods, PyModule},
 };
 use std::{
-  ffi::CString,
+  ffi::{CStr, CString},
   sync::atomic::{AtomicUsize, Ordering},
 };
 
@@ -45,6 +45,60 @@ class Answer:
         self.done.set()
 "#;
 
+/// Puts `dry/portal.py` inside a package of its own and imports it there.
+///
+/// The synthetic package carries nothing but a search path pointing at `dry/`,
+/// which is all a relative import needs: `from .signature import mismatch`
+/// finds the real `dry/signature.py`, and so will every relative import
+/// written after it. Importing the actual `dry` package instead would run its
+/// `__init__`, which reaches for the extension module — and the extension only
+/// exists once maturin has built it, so no `cargo test` can import it. That is
+/// the one relative import the portal still cannot make: a sibling that pulls
+/// the extension in, as `dry/exceptions.py` does. A sibling of pure Python,
+/// which is what the portal reaches for, resolves here exactly as it does in
+/// an installed package.
+const LOAD_PORTAL: &CStr = cr#"
+from importlib.machinery import ModuleSpec
+from importlib.util import module_from_spec, spec_from_file_location
+from sys import modules
+
+spec = ModuleSpec(package, None, is_package=True)
+spec.submodule_search_locations = [directory]
+modules[package] = module_from_spec(spec)
+
+spec = spec_from_file_location(f'{package}.portal', f'{directory}/portal.py')
+portal = module_from_spec(spec)
+modules[spec.name] = portal
+spec.loader.exec_module(portal)
+"#;
+
+/// The portal, loaded under `package` and answering to nothing else.
+///
+/// The name is the whole of the isolation. `sys.modules` hands back the module
+/// object already registered under a name, and the portal keeps state for the
+/// process — a loop, a thread pool, a closed flag — so two tests loading under
+/// one name would be running the same portal, and one test's shutdown would be
+/// another's.
+fn portal_in<'py>(py: Python<'py>, package: &str) -> Bound<'py, PyModule> {
+  let globals = PyDict::new(py);
+  globals
+    .set_item("package", package)
+    .expect("the package name should be reachable from the loader");
+  globals
+    .set_item("directory", concat!(env!("CARGO_MANIFEST_DIR"), "/dry"))
+    .expect("the package directory should be reachable from the loader");
+
+  py.run(LOAD_PORTAL, Some(&globals), None)
+    .expect("the portal should import");
+
+  globals
+    .get_item("portal")
+    .expect("the loader should leave the portal")
+    .expect("the loader should leave the portal")
+    .cast_into::<PyModule>()
+    .expect("the portal should be a module")
+}
+
 /// Runs a close the way the event loop runs one.
 ///
 /// `setup` prepares the portal — a hook, a Call in flight — and then the
@@ -56,17 +110,13 @@ class Answer:
 /// another's.
 fn through_a_close(setup: &str, verdict: &str) -> String {
   static PORTALS: AtomicUsize = AtomicUsize::new(0);
-  let name = CString::new(format!(
+  let name = format!(
     "dry_portal_closing_{}",
     PORTALS.fetch_add(1, Ordering::Relaxed)
-  ))
-  .expect("the module name should be readable");
+  );
 
   Python::attach(|py| {
-    let source = CString::new(include_str!("../../dry/portal.py"))
-      .expect("the portal should be readable");
-    let portal = PyModule::from_code(py, &source, c"portal.py", &name)
-      .expect("the portal should import");
+    let portal = portal_in(py, &name);
 
     let globals = PyDict::new(py);
     globals
@@ -362,17 +412,13 @@ fn through_the_bus(
   setup: &str, events: &[(&str, PythonType)], verdict: &str,
 ) -> String {
   static PORTALS: AtomicUsize = AtomicUsize::new(0);
-  let name = CString::new(format!(
+  let name = format!(
     "dry_portal_listening_{}",
     PORTALS.fetch_add(1, Ordering::Relaxed)
-  ))
-  .expect("the module name should be readable");
+  );
 
   Python::attach(|py| {
-    let source = CString::new(include_str!("../../dry/portal.py"))
-      .expect("the portal should be readable");
-    let portal = PyModule::from_code(py, &source, c"portal.py", &name)
-      .expect("the portal should import");
+    let portal = portal_in(py, &name);
 
     let globals = PyDict::new(py);
     globals

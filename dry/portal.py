@@ -45,20 +45,7 @@ from logging import getLogger
 from threading import Lock, Thread
 from typing import Any, Awaitable, Callable, Protocol
 
-try:
-    from .signature import mismatch
-except ImportError:
-    # `src/api/tests.rs` loads this file on its own, outside the package, so
-    # that testing the portal does not drag the extension module in with it.
-    # There is no sibling to import then, and an unchecked Call is what
-    # `mismatch` already answers whenever it cannot read a declaration.
-    def mismatch(
-        name: str,
-        function: Callable[..., object],
-        arguments: tuple[object, ...],
-    ) -> TypeError | None:
-        return None
-
+from .signature import mismatch
 
 _LOGGER = getLogger('dry.bridge')
 
