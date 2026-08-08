@@ -5,7 +5,8 @@ from re import compile as compile_pattern
 from sys import argv, executable, platform
 from typing import Any, Callable
 
-from . import dry
+from . import dry, portal
+from .portal import CloseHook
 
 StrPath = str | PathLike[str]
 
@@ -123,6 +124,7 @@ class Webview:
         '_html',
         '_icon_path',
         '_min_size',
+        '_on_close',
         '_root',
         '_running',
         '_size',
@@ -147,6 +149,7 @@ class Webview:
         app_id: str | None = None,
         user_data_folder: StrPath | None = None,
         default: Callable[[Any], Any] | None = None,
+        on_close: CloseHook | None = None,
     ) -> None:
         self._running = False
 
@@ -172,6 +175,7 @@ class Webview:
         if user_data_folder is not None:
             self.user_data_folder = user_data_folder
         self.default = default
+        self.on_close = on_close
 
     def _refuse_late_assignment(self, setting: str) -> None:
         """
@@ -429,6 +433,30 @@ class Webview:
 
         return self._html, self._url
 
+    @property
+    def on_close(self) -> CloseHook | None:
+        """
+        The hook asked before the Webview closes.
+
+        Returning `False` refuses the close and leaves the window open, so an
+        application can prompt about unsaved work. Anything else allows it, and
+        a hook that only saves state need return nothing. A hook that raises has
+        not made a decision, so the close goes ahead and the exception is logged.
+
+        The hook runs on the event-loop thread while the window is held still. A
+        coroutine function works too, awaited on Dry's loop.
+        """
+        return self._on_close
+
+    @on_close.setter
+    def on_close(self, on_close: CloseHook | None) -> None:
+        self._refuse_late_assignment('on_close')
+        if on_close is not None and not callable(on_close):  # pyright: ignore[reportUnnecessaryComparison]
+            raise TypeError(
+                f'on_close must be callable, got {type(on_close).__name__}.'
+            )
+        self._on_close = on_close
+
     def run(self) -> None:
         """
         Run the webview window, in a blocking loop.
@@ -455,6 +483,8 @@ class Webview:
         # is not something that happens: the event loop takes the main thread
         # and does not give it back. The flag stands until the window fails to
         # open, which is the only way this call returns.
+        portal.on_close(self._on_close)
+
         self._running = True
         try:
             dry.run(
