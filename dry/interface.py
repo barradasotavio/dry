@@ -335,6 +335,11 @@ class Webview:
     def api(self) -> dict[str, Callable[..., Any]] | None:
         """
         The names the frontend may Call, mapped to Python callables.
+
+        A Call's arguments are checked against the callable's declared
+        annotations before it runs, so a frontend that passes the wrong type is
+        told which parameter and what arrived. An unannotated parameter, or one
+        whose annotation cannot be resolved, is left unchecked.
         """
         return self._api
 
