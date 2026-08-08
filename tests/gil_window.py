@@ -30,10 +30,11 @@ WINDOW_LIFETIME = 1.5
 TICK_INTERVAL = 0.05
 
 # When the ticker gives up waiting for the window to close itself and ends the
-# process. Only reached when the page never runs — a webview that fails to
-# render in a headless-ish CI session, say — and it keeps that failure from
-# hanging the parent until its timeout.
-BACKSTOP = WINDOW_LIFETIME * 6
+# process. Only reached when the page never runs, and it keeps that failure
+# from hanging the parent until its timeout. Far above WINDOW_LIFETIME on
+# purpose: the page's timer starts only once the webview has rendered, and a
+# cold WebView2 on a Windows runner takes seconds to get there.
+BACKSTOP = 30.0
 
 # The exit code the backstop leaves behind, so the parent can tell a window
 # that closed itself from one that had to be shot.
