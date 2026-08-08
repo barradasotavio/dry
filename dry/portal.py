@@ -1,5 +1,5 @@
 """
-Where a Call runs, and where the process is put down.
+Where a Call and an Event run, and where the process is put down.
 
 The GUI event loop owns the main thread — on macOS that is an AppKit
 requirement, not a preference — so a callback that runs there holds the window
@@ -8,6 +8,10 @@ takes every Call off that thread. A coroutine callback is scheduled onto an
 asyncio loop Dry owns on a daemon thread, and a plain callback goes to a thread
 pool. Both answer through the same Completion, which carries the reply back
 across the Bridge.
+
+An Event listener takes the same road, minus the Completion: it is a Bridge
+message that returns nothing, so it is handed over and never answered. What it
+returns is dropped, and what it raises is logged.
 
 Two consequences, recorded in ADR-0001. Dry owns the process, so an application
 cannot make `asyncio.run(main())` its entry point — the developer's async code
@@ -72,6 +76,15 @@ anything. A coroutine function works too: it is awaited on Dry's loop before
 the answer is read.
 """
 
+Listener = Callable[[Any], object]
+"""
+What an application registers for the name of an Event.
+
+Takes the Event's value, one argument, and returns nothing that anybody reads:
+an Event has no return path, so whatever a listener returns is dropped. A
+coroutine function works too, awaited on Dry's loop.
+"""
+
 _lock = Lock()
 _loop: AbstractEventLoop | None = None
 _thread: Thread | None = None
@@ -83,6 +96,12 @@ _hook: CloseHook | None = None
 # waits on these, which is the difference between an application that finishes
 # writing its file and one that is cut off mid-write.
 _pending: set[Future[Any]] = set()
+
+# Every Python listener, by the name of the Event it is registered for. The
+# lists are kept in registration order and never mutated in place once handed
+# out, so a listener registering or unregistering another from inside its own
+# delivery cannot disturb the delivery already under way.
+_listeners: dict[str, list[Listener]] = {}
 
 
 def dispatch(
@@ -112,6 +131,76 @@ def dispatch(
         return
 
     _answer(name, executor.submit(function, *arguments), loop, completion)
+
+
+def listen(name: str, listener: Listener) -> None:
+    """
+    Registers a listener for the Event of that name. Registering the same
+    listener twice registers it twice, and it is then delivered to twice — the
+    register is a list, not a set, because two identical closures are not the
+    same subscription.
+    """
+    with _lock:
+        _listeners.setdefault(name, []).append(listener)
+
+
+def unlisten(name: str, listener: Listener) -> None:
+    """
+    Takes one registration of a listener off the name, the earliest one.
+    Removing a listener that was never registered does nothing.
+    """
+    with _lock:
+        registered = _listeners.get(name)
+        if registered is None:
+            return
+        remaining = list(registered)
+        try:
+            remaining.remove(listener)
+        except ValueError:
+            return
+        if remaining:
+            _listeners[name] = remaining
+        else:
+            del _listeners[name]
+
+
+def deliver(name: str, value: object) -> None:
+    """
+    Hands one Event to every listener registered for its name, and returns.
+
+    Called by Rust on the thread that owns the window, so nothing is run here:
+    each listener goes to the portal exactly as a Call does, and the window
+    carries on drawing. An Event with no listeners is a no-op, which is what
+    makes it safe for a frontend to announce something nobody is waiting for.
+
+    Listeners are handed over in the order they registered, and that is the
+    only ordering an application may rely on. They run concurrently, on the
+    loop or in the pool, so they finish in whatever order they finish in, and
+    two listeners that share state must make that state thread-safe — the same
+    consequence ADR-0001 records for an Api.
+
+    A listener that raises is logged and the rest are delivered to anyway: an
+    Event has no sender waiting on an answer, so one broken listener is not
+    grounds for silencing the others.
+    """
+    with _lock:
+        listeners = _listeners.get(name)
+
+    if not listeners:
+        return
+
+    try:
+        loop, executor = _running()
+    except RuntimeError:
+        # The window is going. There is nobody to tell, and nothing a listener
+        # could usefully do from inside a closing process.
+        _LOGGER.debug(
+            "The Bridge is closed, so the Event '%s' reached no listener.", name
+        )
+        return
+
+    for listener in listeners:
+        _hand_over(name, listener, value, loop, executor)
 
 
 def on_close(hook: CloseHook | None) -> None:
@@ -399,3 +488,79 @@ def _answer_with(name: str, error: BaseException, completion: Completion) -> Non
         completion.reject(error)
     except BaseException:
         _LOGGER.exception("The Call to '%s' could not be answered.", name)
+
+
+def _hand_over(
+    name: str,
+    listener: Listener,
+    value: object,
+    loop: AbstractEventLoop,
+    executor: ThreadPoolExecutor,
+) -> None:
+    """
+    Runs one listener off the event-loop thread. The same choice `dispatch`
+    makes for a Call — a coroutine function onto the loop, anything else into
+    the pool — without the Completion, because there is nothing to answer.
+    """
+    if iscoroutinefunction(listener):
+        try:
+            coroutine = listener(value)
+        except BaseException as error:
+            _listener_failed(name, error)
+            return
+        _delivered(name, _scheduled(name, coroutine, loop), loop)
+        return
+
+    _delivered(name, executor.submit(listener, value), loop)
+
+
+def _scheduled(
+    name: str, awaitable: Awaitable[object], loop: AbstractEventLoop
+) -> Future[Any] | None:
+    try:
+        return run_coroutine_threadsafe(_awaited(awaitable), loop)
+    except BaseException as error:
+        _listener_failed(name, error)
+        return None
+
+
+def _delivered(
+    name: str, future: Future[Any] | None, loop: AbstractEventLoop
+) -> None:
+    """
+    Watches one step of a delivery. The step joins the list a closing portal
+    waits on, so a listener saving state on the way out gets the same grace
+    period an in-flight Call gets. What it returns is dropped — an Event has no
+    return path — except that an awaitable is finished first, so a callable
+    with an `async def __call__` listens as an `async def` does.
+    """
+    if future is None:
+        return
+
+    def finished(future: Future[Any]) -> None:
+        with _lock:
+            _pending.discard(future)
+
+        try:
+            value = future.result()
+        except BaseException as error:
+            _listener_failed(name, error)
+            return
+
+        if isawaitable(value):
+            _delivered(name, _scheduled(name, value, loop), loop)
+
+    with _lock:
+        _pending.add(future)
+
+    future.add_done_callback(finished)
+
+
+def _listener_failed(name: str, error: BaseException) -> None:
+    """
+    Records a listener that raised, with its traceback, and lets the delivery
+    carry on to the others.
+    """
+    _LOGGER.error(
+        "A listener for the Event '%s' raised.", name, exc_info=error
+    )

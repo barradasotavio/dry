@@ -1,7 +1,21 @@
+//! The event loop that owns the window, and the Event half of the Bridge.
+//!
+//! Two things share this module because they are the same road. An AppEvent is
+//! how any other thread reaches the thread that draws the window; a Bridge
+//! Event is a message with a name and a value that returns nothing, and every
+//! one of them travelling towards the frontend becomes an AppEvent on the way.
+//!
+//! An Event is not a Call and has no return path. Nothing here waits, nothing
+//! here answers, and a listener's return value is dropped on both sides. A
+//! Python listener is handed to the portal exactly as a Call is, so it runs off
+//! the thread that draws the window; see `dry/portal.py` and ADR-0001.
+
 use pyo3::{
-  Bound, Python,
+  Bound, PyAny, PyResult, Python,
   types::{PyAnyMethods, PyModule},
 };
+use serde::{Deserialize, Serialize};
+use serde_json::{Error as JsonError, from_str, to_string};
 use std::sync::{Mutex, OnceLock};
 use tao::{
   event::{Event, StartCause, WindowEvent},
@@ -10,7 +24,14 @@ use tao::{
 };
 use wry::WebView;
 
-use crate::{logs, window::resize};
+use crate::{
+  errors::BridgeError,
+  logs,
+  types::{PythonType, from_python, to_python},
+  window::resize,
+};
+
+pub const EVENTS_JS: &str = include_str!("js/events.js");
 
 #[cfg(test)]
 mod tests;
@@ -43,7 +64,169 @@ pub enum AppEvent {
   CloseWindow,
   ResizeWindow(ResizeDirection),
   ResizeDragged(resize::Drag),
-  FromPython(String),
+}
+
+/// What the frontend puts in front of an Event on the wire, so the one IPC
+/// handler can tell an Event from a Call without parsing it first.
+pub const EVENT_PREFIX: &str = "dry_event:";
+
+/// The mark of a name Dry keeps for itself.
+///
+/// An Event named `window:maximized` is an ordinary Event on the ordinary bus —
+/// the only thing reserved about it is who may emit it. Both public doors,
+/// `dry.emit_event` from Python and `window.dry.emit` from the frontend, refuse
+/// a name starting with this, so a listener for one is hearing from Dry and
+/// nothing else. Listening is not restricted: a reserved name is exactly as
+/// listenable as any other, on both sides.
+///
+/// Dry's own side emits one through `emit_reserved`, which does not check.
+pub const RESERVED_PREFIX: &str = "window:";
+
+/// One Event on the wire: a name, and a value inside the Bridge contract.
+///
+/// There is no id and no reply field, because there is nothing to reply to.
+/// The same shape travels in both directions.
+#[derive(Debug, Deserialize, Serialize)]
+pub struct BridgeEvent {
+  pub name: String,
+  /// Absent is `null`: `JSON.stringify` drops a key whose value is
+  /// `undefined`, so `window.dry.emit('saved')` arrives with no value at all.
+  #[serde(default = "nothing")]
+  pub value: PythonType,
+}
+
+fn nothing() -> PythonType {
+  PythonType::Null
+}
+
+/// Reads one Event off the wire.
+pub fn parse_event(body: &str) -> Result<BridgeEvent, JsonError> {
+  from_str(body)
+}
+
+/// Writes the JavaScript that hands an Event to the frontend's listeners.
+pub fn event_script(event: &BridgeEvent) -> Result<String, JsonError> {
+  Ok(format!("window.dry.deliverEvent({})", to_string(event)?))
+}
+
+/// Refuses a name the application may not emit under, and an empty one.
+fn emittable(name: &str) -> Result<(), String> {
+  if name.is_empty() {
+    return Err("An Event needs a name.".to_string());
+  }
+  if name.starts_with(RESERVED_PREFIX) {
+    return Err(format!(
+      "'{name}' is a reserved Event name: a name starting with '{RESERVED_PREFIX}' \
+       belongs to Dry's own window Events. Listen for it as much as you like, but \
+       emit under a name of your own."
+    ));
+  }
+  Ok(())
+}
+
+/// Emits an Event from Python to the frontend.
+///
+/// Fire and forget, by definition: this returns once the message is on its way
+/// to the thread that owns the window, and nothing comes back. A value outside
+/// the Bridge contract raises here, through the same `default=` hook a Call's
+/// return value goes through.
+#[pyo3::pyfunction]
+pub fn emit_event(name: &str, value: &Bound<'_, PyAny>) -> PyResult<()> {
+  emittable(name).map_err(BridgeError::new_err)?;
+  let value = from_python(value)?;
+  deliver_to_frontend(name, &value).map_err(BridgeError::new_err)
+}
+
+/// The escape hatch ADR-0001's reasoning leaves in place of a Python-to-
+/// frontend Call: raw script, evaluated in the page, returning nothing. A Call
+/// with a return value would be an await on the Python side that never
+/// resolves if the page navigates away.
+#[pyo3::pyfunction]
+pub fn eval_js(script: &str) -> PyResult<()> {
+  send_to_event_loop(AppEvent::RunJavascript(script.to_string()))
+    .map_err(BridgeError::new_err)
+}
+
+/// Hands an Event to the frontend's listeners.
+pub fn deliver_to_frontend(name: &str, value: &PythonType) -> Result<(), String> {
+  let event = BridgeEvent {
+    name: name.to_string(),
+    value: value.clone(),
+  };
+  let script = event_script(&event)
+    .map_err(|err| format!("The Event could not be written: {err}"))?;
+  send_to_event_loop(AppEvent::RunJavascript(script))
+}
+
+/// Hands an Event to Python's listeners, through the portal.
+///
+/// Called on the thread that draws the window, and returns as soon as the
+/// portal has taken the listeners off it. Nothing here can fail in a way the
+/// sender could act on — an Event has no sender waiting — so a failure is
+/// logged and dropped.
+pub fn deliver_to_python(name: &str, value: &PythonType) {
+  Python::attach(|py| match py.import(PORTAL) {
+    Ok(portal) => deliver_through(&portal, name, value),
+    Err(err) => {
+      logs::error(
+        logs::BRIDGE,
+        format!("The Event '{name}' could not reach Python: {err}"),
+      );
+    },
+  });
+}
+
+/// The half of `deliver_to_python` a test can hold a portal up to.
+fn deliver_through(portal: &Bound<'_, PyModule>, name: &str, value: &PythonType) {
+  let deliver = || -> PyResult<()> {
+    let value = to_python(portal.py(), value)?;
+    portal.call_method1("deliver", (name, value))?;
+    Ok(())
+  };
+  if let Err(err) = deliver() {
+    logs::error(
+      logs::BRIDGE,
+      format!("The Event '{name}' could not be delivered to Python: {err}"),
+    );
+  }
+}
+
+/// Emits an Event under a reserved name, to both sides at once.
+///
+/// The door Dry's own Events come through, and the one #6 wants: a window
+/// event is an Event like any other, so it reaches every Python listener and
+/// every frontend listener registered for its name, and neither side can forge
+/// one. Nothing calls it yet.
+#[allow(dead_code)]
+pub fn emit_reserved(name: &str, value: PythonType) {
+  if let Err(err) = deliver_to_frontend(name, &value) {
+    logs::error(
+      logs::BRIDGE,
+      format!("The Event '{name}' could not be delivered to the frontend: {err}"),
+    );
+  }
+  deliver_to_python(name, &value);
+}
+
+/// Reads one Event off the Bridge and hands it to Python.
+///
+/// A frontend may not emit under a reserved name, so a page cannot forge the
+/// window event a listener trusts Dry for.
+pub fn handle_event_request(body: &str) {
+  let event = match parse_event(body) {
+    Ok(event) => event,
+    Err(err) => {
+      logs::error(logs::BRIDGE, format!("The Event could not be read: {err}"));
+      return;
+    },
+  };
+
+  if let Err(reason) = emittable(&event.name) {
+    logs::error(logs::BRIDGE, format!("The Event was refused: {reason}"));
+    return;
+  }
+
+  deliver_to_python(&event.name, &event.value);
 }
 
 pub fn run_event_loop(
@@ -99,7 +282,6 @@ fn handle_app_event(
       }
     },
     AppEvent::ResizeDragged(drag) => resize::apply(&drag, window),
-    AppEvent::FromPython(message) => handle_python_event(&message),
   }
 }
 
@@ -215,8 +397,4 @@ fn drag(window: &Window) {
       format!("The window could not be dragged: {err}"),
     );
   }
-}
-
-fn handle_python_event(message: &str) {
-  logs::debug(logs::BRIDGE, format!("Event from Python: {message}"));
 }

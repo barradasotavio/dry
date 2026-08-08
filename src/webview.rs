@@ -25,7 +25,7 @@ use wry::{
 use crate::{
   api::{API_JS, handle_api_requests},
   errors::WebviewError,
-  events::AppEvent,
+  events::{AppEvent, EVENT_PREFIX, EVENTS_JS, handle_event_request},
   logs,
   window::{
     WINDOW_BORDERS_JS, WINDOW_EVENTS_JS, WINDOW_FUNCTIONS_JS, handle_window_requests,
@@ -63,6 +63,9 @@ pub fn build_webview(
     .with_initialization_script(NAMESPACE_JS)
     .with_initialization_script(WINDOW_FUNCTIONS_JS)
     .with_initialization_script(WINDOW_EVENTS_JS)
+    // Always, Api or no Api: an Event needs no Api to cross, and the window
+    // Events Dry emits itself have to have somewhere to land.
+    .with_initialization_script(EVENTS_JS)
     .with_devtools(dev_tools)
     .with_ipc_handler(ipc_handler);
 
@@ -441,6 +444,12 @@ pub fn build_ipc_handler(
 
     if request_body.starts_with("window_control") {
       handle_window_requests(request_body, &event_loop_proxy);
+      return;
+    }
+
+    // An Event, unlike a Call, reaches Python whether or not there is an Api.
+    if let Some(event) = request_body.strip_prefix(EVENT_PREFIX) {
+      handle_event_request(event);
       return;
     }
 

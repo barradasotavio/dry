@@ -6,7 +6,7 @@ from sys import argv, executable, platform
 from typing import Any, Callable
 
 from . import dry, portal
-from .portal import CloseHook
+from .portal import CloseHook, Listener
 
 StrPath = str | PathLike[str]
 
@@ -77,6 +77,14 @@ class Webview:
     mutually exclusive modes: an HTML string (`html`), a URL (`url`), or a Root
     (`root`) — a local directory served to the Webview so that relative assets
     resolve. Declaring more than one, or none, raises.
+
+    The Bridge to that frontend carries two shapes, both ways. A Call returns a
+    value: the frontend Calls a name in `api` and awaits what Python returns. An
+    Event returns nothing and goes to every listener registered for its name:
+    `wv.emit(name, value)` reaches the frontend's `window.dry.on(name, ...)`,
+    and the page's `window.dry.emit(name, value)` reaches every listener
+    registered through `wv.on(name, ...)`. Python does not Call the frontend —
+    `eval_js` covers the rare case where a script has to run there.
 
     Assigning an attribute that is not a setting raises, so a typo cannot
     silently create one that never applies. So does assigning a setting that
@@ -456,6 +464,66 @@ class Webview:
                 f'on_close must be callable, got {type(on_close).__name__}.'
             )
         self._on_close = on_close
+
+    def on(self, name: str, listener: Listener) -> Listener:
+        """
+        Register a listener for the Event of that name, and return it:
+
+            wv.on('form-dirty', remember)
+
+        Every listener registered for a name receives every Event carrying it,
+        in the order they registered — but each runs off the thread that draws
+        the window, on Dry's loop or in its pool, so they overlap and finish in
+        any order. Two listeners sharing state must make that state
+        thread-safe, exactly as an Api must (ADR-0001).
+
+        A listener takes the Event's value and returns nothing anybody reads:
+        an Event has no return path. One that raises is logged on `dry.bridge`
+        with its traceback, and the others still get theirs.
+
+        Registering costs nothing and needs no window, so a listener may be
+        registered before `run()`. A name beginning with `window:` is Dry's
+        own — listening for one is exactly how the window Events are heard.
+        """
+        portal.listen(name, listener)
+        return listener
+
+    def off(self, name: str, listener: Listener) -> None:
+        """
+        Take one registration of a listener off that name. A listener that was
+        never registered is not an error.
+        """
+        portal.unlisten(name, listener)
+
+    def emit(self, name: str, value: Any = None) -> None:
+        """
+        Emit an Event to the frontend, where every listener registered for the
+        name through `window.dry.on` receives it.
+
+        Returns as soon as the Event is on its way, and returns nothing: that
+        is what separates an Event from a Call. An Event nobody is listening
+        for is a no-op, not an error.
+
+        The value crosses under the Bridge contract, `default=` hook included,
+        so anything outside it raises here rather than arriving mangled. Safe
+        from any thread and from inside any callback; before `run()` there is
+        no frontend to reach, and it raises.
+
+        A name beginning with `window:` is reserved for Dry's own window
+        Events and raises: listen for those, do not emit them.
+        """
+        dry.emit_event(name, value)
+
+    def eval_js(self, script: str) -> None:
+        """
+        Evaluate a script in the page, and read nothing back.
+
+        The escape hatch for the one quadrant the Bridge deliberately does not
+        have: a Python-to-frontend Call with a return value would be an await
+        on this side that never resolves if the page navigates or hangs. When
+        the answer matters, have the frontend Call Python instead.
+        """
+        dry.eval_js(script)
 
     def run(self) -> None:
         """

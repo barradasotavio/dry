@@ -1,4 +1,4 @@
-//! Tests for the close sequence, run without a window.
+//! Tests for the close sequence and the Event bus, run without a window.
 //!
 //! What the event loop does on a close request is two calls into Python with a
 //! decision between them, so that is what is exercised here: the portal is
@@ -16,7 +16,11 @@ use std::{
   sync::atomic::{AtomicUsize, Ordering},
 };
 
-use super::{allowed_by, shut_down_through};
+use super::{
+  BridgeEvent, allowed_by, deliver_through, emittable, event_script, parse_event,
+  shut_down_through,
+};
+use crate::types::PythonType;
 
 /// What every close test has in front of it: a stand-in for the Completion,
 /// and Dry's own logger kept quiet so that a deliberately raising hook does
@@ -300,5 +304,258 @@ time.sleep(0.05)
       "verdict = f'{sorted(ran)}'",
     ),
     "['atexit', 'finally']"
+  );
+}
+
+#[test]
+fn an_event_reads_off_the_wire_with_its_value() {
+  let event = parse_event(r#"{"name": "saved", "value": {"id": 7}}"#)
+    .expect("the Event should read");
+  assert_eq!(event.name, "saved");
+  assert_eq!(
+    event.value,
+    PythonType::Object(vec![("id".to_string(), PythonType::Integer(7))])
+  );
+}
+
+/// `JSON.stringify` drops a key whose value is `undefined`, so
+/// `window.dry.emit('saved')` arrives with no value field at all. It is null,
+/// not a broken message.
+#[test]
+fn an_event_with_no_value_carries_null() {
+  let event = parse_event(r#"{"name": "saved"}"#).expect("the Event should read");
+  assert_eq!(event.value, PythonType::Null);
+}
+
+#[test]
+fn an_event_travels_to_the_frontend_as_a_delivery() {
+  let script = event_script(&BridgeEvent {
+    name: "tick".to_string(),
+    value: PythonType::Array(vec![PythonType::Boolean(true)]),
+  })
+  .expect("the Event should be written");
+  assert_eq!(
+    script,
+    r#"window.dry.deliverEvent({"name":"tick","value":[true]})"#
+  );
+}
+
+/// The mechanism #6 is waiting for. A reserved name is refused at both public
+/// doors, so a listener for one is hearing from Dry and nothing else.
+#[test]
+fn a_reserved_name_cannot_be_emitted_by_an_application() {
+  let refusal = emittable("window:maximized").expect_err("a reserved name is refused");
+  assert!(refusal.contains("reserved"));
+  assert!(emittable("maximized").is_ok(), "an ordinary name is not");
+}
+
+#[test]
+fn an_event_needs_a_name() {
+  assert!(emittable("").is_err());
+}
+
+/// Runs a delivery the way the Bridge runs one: listeners are registered in
+/// `setup`, the Events in `events` are then delivered from Rust through the
+/// same `deliver_through` the IPC handler uses, and `verdict` reports what
+/// arrived. Every test gets a portal of its own.
+fn through_the_bus(
+  setup: &str, events: &[(&str, PythonType)], verdict: &str,
+) -> String {
+  static PORTALS: AtomicUsize = AtomicUsize::new(0);
+  let name = CString::new(format!(
+    "dry_portal_listening_{}",
+    PORTALS.fetch_add(1, Ordering::Relaxed)
+  ))
+  .expect("the module name should be readable");
+
+  Python::attach(|py| {
+    let source = CString::new(include_str!("../../dry/portal.py"))
+      .expect("the portal should be readable");
+    let portal = PyModule::from_code(py, &source, c"portal.py", &name)
+      .expect("the portal should import");
+
+    let globals = PyDict::new(py);
+    globals
+      .set_item("portal", portal.clone())
+      .expect("the portal should be reachable from the test");
+
+    let arrangement = CString::new(format!("{HARNESS}\n{setup}\n"))
+      .expect("the test setup should be readable");
+    py.run(&arrangement, Some(&globals), None)
+      .expect("the test setup should run");
+
+    for (event, value) in events {
+      deliver_through(&portal, event, value);
+    }
+
+    let question = CString::new(verdict).expect("the test verdict should be readable");
+    py.run(&question, Some(&globals), None)
+      .expect("the test verdict should run");
+
+    let answer = globals
+      .get_item("verdict")
+      .expect("the test body should leave a verdict")
+      .expect("the test body should leave a verdict")
+      .extract()
+      .expect("the verdict should be a string");
+
+    portal
+      .call_method0("shutdown")
+      .expect("the portal should shut down");
+
+    answer
+  })
+}
+
+/// What the whole quadrant is for: one Event, every listener registered for
+/// its name, with the value that crossed.
+#[test]
+fn an_event_reaches_every_listener_registered_for_its_name() {
+  assert_eq!(
+    through_the_bus(
+      r#"
+seen = []
+arrived = threading.Semaphore(0)
+
+def first(value):
+    seen.append(('first', value))
+    arrived.release()
+
+def second(value):
+    seen.append(('second', value))
+    arrived.release()
+
+portal.listen('saved', first)
+portal.listen('saved', second)
+"#,
+      &[("saved", PythonType::Integer(7))],
+      r#"
+assert all(arrived.acquire(timeout=10) for _ in range(2)), 'a listener never ran'
+verdict = f'{sorted(seen)}'
+"#,
+    ),
+    "[('first', 7), ('second', 7)]"
+  );
+}
+
+/// A frontend announcing something nobody listens for is the ordinary case,
+/// not a failure.
+#[test]
+fn an_event_with_no_listeners_is_not_an_error() {
+  assert_eq!(
+    through_the_bus(
+      "",
+      &[("unheard", PythonType::Null)],
+      "verdict = 'no listener, no complaint'",
+    ),
+    "no listener, no complaint"
+  );
+}
+
+/// An Event has no sender waiting on an answer, so one broken listener is not
+/// grounds for silencing the others.
+#[test]
+fn a_listener_that_raises_does_not_stop_the_others() {
+  assert_eq!(
+    through_the_bus(
+      r#"
+seen = []
+arrived = threading.Event()
+
+def broken(value):
+    raise ValueError('this listener is wrong')
+
+def working(value):
+    seen.append(value)
+    arrived.set()
+
+portal.listen('saved', broken)
+portal.listen('saved', working)
+"#,
+      &[("saved", PythonType::String("state".to_string()))],
+      r#"
+assert arrived.wait(10), 'the second listener never ran'
+verdict = f'{seen}'
+"#,
+    ),
+    "['state']"
+  );
+}
+
+/// A listener runs on the portal, never on the thread that draws the window —
+/// the same guarantee ADR-0001 gives a Call, for the same reason.
+#[test]
+fn a_listener_runs_off_the_calling_thread() {
+  assert_eq!(
+    through_the_bus(
+      r#"
+here = threading.current_thread().name
+seen = []
+arrived = threading.Event()
+
+def where(value):
+    seen.append(threading.current_thread().name)
+    arrived.set()
+
+portal.listen('where', where)
+"#,
+      &[("where", PythonType::Null)],
+      r#"
+assert arrived.wait(10), 'the listener never ran'
+verdict = 'elsewhere' if seen[0] != here else 'on the calling thread'
+"#,
+    ),
+    "elsewhere"
+  );
+}
+
+/// A coroutine listener is awaited on Dry's loop, as a coroutine callback is.
+#[test]
+fn a_coroutine_listener_is_awaited() {
+  assert_eq!(
+    through_the_bus(
+      r#"
+seen = []
+arrived = threading.Event()
+
+async def slowly(value):
+    await asyncio.sleep(0.01)
+    seen.append(value)
+    arrived.set()
+
+portal.listen('saved', slowly)
+"#,
+      &[("saved", PythonType::Integer(1))],
+      r#"
+assert arrived.wait(10), 'the listener never ran'
+verdict = f'{seen}'
+"#,
+    ),
+    "[1]"
+  );
+}
+
+#[test]
+fn an_unregistered_listener_stops_hearing() {
+  assert_eq!(
+    through_the_bus(
+      r#"
+seen = []
+
+def listener(value):
+    seen.append(value)
+
+portal.listen('saved', listener)
+portal.unlisten('saved', listener)
+portal.unlisten('saved', listener)
+portal.unlisten('never', listener)
+"#,
+      &[("saved", PythonType::Integer(1))],
+      r#"
+time.sleep(0.05)
+verdict = f'{seen}'
+"#,
+    ),
+    "[]"
   );
 }

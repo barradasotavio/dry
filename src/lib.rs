@@ -15,14 +15,15 @@ use tao::{
 use wry::WebView;
 
 use errors::{BridgeError, WebviewError, catch_panic};
-use events::{AppEvent, PROXY, run_event_loop, send_to_event_loop};
+use events::{AppEvent, PROXY, run_event_loop};
 use webview::{build_ipc_handler, build_webview};
 use window::build_window;
 
 #[pymodule(gil_used = true)]
 fn dry(m: &Bound<'_, PyModule>) -> PyResult<()> {
   m.add_function(wrap_pyfunction!(run, m)?)?;
-  m.add_function(wrap_pyfunction!(send_event, m)?)?;
+  m.add_function(wrap_pyfunction!(events::emit_event, m)?)?;
+  m.add_function(wrap_pyfunction!(events::eval_js, m)?)?;
   errors::register(m)?;
   Ok(())
 }
@@ -145,10 +146,4 @@ fn open(py: Python<'_>, settings: Settings) -> PyResult<Opened> {
     window,
     webview,
   })
-}
-
-#[pyfunction]
-fn send_event(message: &str) -> PyResult<()> {
-  send_to_event_loop(AppEvent::FromPython(message.to_string()))
-    .map_err(BridgeError::new_err)
 }
