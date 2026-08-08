@@ -302,3 +302,13 @@ fn only_addresses_dry_can_ask_about_are_watched() {
 fn the_blank_page_is_not_an_arrival() {
   assert_eq!(BLANK_PAGE, "about:blank");
 }
+
+/// Only one of the two webviews commits the blank page on a failure. WebView2
+/// commits an error page at the address that failed, which the page-load
+/// handler cannot tell from a page, so Windows does not take its word for it.
+/// tests/test_navigation_failures_are_reported.py is what measures this; this
+/// only keeps the split from being flipped by accident.
+#[test]
+fn only_the_webview_that_commits_the_blank_page_is_believed() {
+  assert_eq!(PAGE_LOAD_REPORTS_ARRIVAL, cfg!(target_os = "macos"));
+}
