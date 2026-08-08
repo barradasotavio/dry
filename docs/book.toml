@@ -1,0 +1,32 @@
+# The documentation site, built with mdBook.
+#
+# mdBook is a single static binary that turns Markdown into a static site. It
+# adds nothing to the project's own dependencies — `pyproject.toml` is
+# untouched, and a contributor who only writes Python never needs it — and the
+# Rust toolchain this repository already requires is the same one that produces
+# it. `mdbook serve` from this directory previews the site locally.
+#
+# The ADRs are not copied in here. They stay in `docs/adr/`, where they are the
+# historical record, and the pages under `guide/decisions/` include them.
+
+[book]
+title = "Dry"
+description = "One native window rendering a web frontend, and the Bridge to Python."
+authors = ["Otávio Barradas"]
+language = "en"
+src = "guide"
+
+[build]
+build-dir = "book"
+create-missing = false
+
+[output.html]
+site-url = "/dry/"
+git-repository-url = "https://github.com/barradasotavio/dry"
+edit-url-template = "https://github.com/barradasotavio/dry/edit/master/docs/{path}"
+default-theme = "rust"
+preferred-dark-theme = "ayu"
+
+[output.html.fold]
+enable = true
+level = 1
