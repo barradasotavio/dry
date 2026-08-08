@@ -15,7 +15,7 @@ fn reads_a_panic_with_a_literal_message() {
   Python::attach(|py| {
     assert!(message.is_instance_of::<PanicError>(py));
     assert!(message.to_string().contains("No Content provided."));
-    assert!(message.to_string().contains("src/errors/tests.rs"));
+    assert!(message.to_string().contains(file!()));
   });
 }
 
