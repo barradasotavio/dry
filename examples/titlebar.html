@@ -81,7 +81,7 @@
                     src="https://api.iconify.design/codicon:chrome-minimize.svg" />
             </div>
             <div class="titlebar-button" onclick="window.dry.toggleMaximize()">
-                <img
+                <img id="maximize-icon"
                     src="https://api.iconify.design/codicon:chrome-maximize.svg" />
             </div>
             <div class="titlebar-button" id="close" onclick="window.dry.close()">
@@ -90,7 +90,42 @@
         </div>
     </div>
     <main>
+        <p id="geometry"></p>
     </main>
+
+    <script>
+        // The titlebar does not keep its own guess at whether the window is
+        // maximised. It listens, so a double-click on the bar, an OS keyboard
+        // shortcut and the button below all leave it showing the same thing.
+        const icon = document.getElementById('maximize-icon');
+        const codicon = (name) =>
+            `https://api.iconify.design/codicon:${name}.svg`;
+
+        window.dry.on('window:maximized', () => {
+            icon.src = codicon('chrome-restore');
+        });
+        window.dry.on('window:unmaximized', () => {
+            icon.src = codicon('chrome-maximize');
+        });
+
+        // Sizes are logical pixels, the same unit `size=` is given, so these
+        // are the numbers CSS is working in.
+        const geometry = document.getElementById('geometry');
+        const state = { width: '?', height: '?', x: '?', y: '?' };
+        const show = () => {
+            geometry.textContent =
+                `${state.width} x ${state.height} at ${state.x}, ${state.y}`;
+        };
+        window.dry.on('window:resized', (size) => {
+            Object.assign(state, size);
+            show();
+        });
+        window.dry.on('window:moved', (position) => {
+            Object.assign(state, position);
+            show();
+        });
+        show();
+    </script>
 </body>
 
 </html>

@@ -10,6 +10,7 @@ use tao::{
 use crate::{events::AppEvent, logs};
 
 pub mod resize;
+pub mod state;
 
 pub const WINDOW_FUNCTIONS_JS: &str = include_str!("js/window_functions.js");
 pub const WINDOW_EVENTS_JS: &str = include_str!("js/window_events.js");
