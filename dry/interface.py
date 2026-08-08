@@ -371,10 +371,11 @@ class Webview:
         """
         Whether the native title bar and borders are shown.
 
-        Assignable while the Webview is running. The resize edges an
-        undecorated Webview draws over its own border are injected into the
-        page as it loads, so a window that opened decorated and was undecorated
-        afterwards has no resize edges until the Content is loaded again.
+        Assignable while the Webview is running, but the resize edges do not
+        follow. The script that draws them is registered only when the Webview
+        is built undecorated, so a window that opened decorated never draws
+        them however it is assigned afterwards, and reloading the Content does
+        not help. Build undecorated if the window is meant to toggle.
         """
         return self._decorations
 
