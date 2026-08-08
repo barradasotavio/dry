@@ -1,0 +1,86 @@
+name: Docs
+
+# The documentation site: Markdown under docs/guide, built by mdBook, published
+# to GitHub Pages. Every push builds it, so a broken link or a missing page
+# fails on the branch that broke it; only master publishes.
+#
+# One-time manual setup by the maintainer: repository Settings -> Pages ->
+# Build and deployment -> Source: "GitHub Actions". Nothing else is needed.
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  # Not cancel-in-progress on master: a cancelled deployment would leave the
+  # site on whatever half-published state it reached.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  # mdBook is a single static binary, downloaded here rather than added to the
+  # project's own dependencies: pyproject.toml stays untouched and a
+  # contributor who only writes Python never needs it.
+  MDBOOK_VERSION: '0.5.4'
+
+jobs:
+  build:
+    name: Build the site
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      - name: Install mdBook ${{ env.MDBOOK_VERSION }}
+        run: |
+          url="https://github.com/rust-lang/mdBook/releases/download/v${MDBOOK_VERSION}/mdbook-v${MDBOOK_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          mkdir -p "$RUNNER_TEMP/mdbook"
+          curl --proto '=https' --tlsv1.2 --location --fail --silent --show-error "$url" \
+            | tar --extract --gzip --directory "$RUNNER_TEMP/mdbook"
+          echo "$RUNNER_TEMP/mdbook" >> "$GITHUB_PATH"
+
+      - name: Build the book
+        # create-missing is off in book.toml, so a page listed in SUMMARY.md
+        # with no file behind it fails here instead of being invented.
+        run: mdbook build docs
+
+      - name: Check that the included pages resolved
+        # A book whose {{#include}} silently resolved to nothing still builds,
+        # and the page still weighs 20 kB of chrome. The ADR pages and the
+        # changelog are pure includes, so each is asked for a heading that can
+        # only have come from the file it pulls in.
+        run: |
+          grep -q 'AppKit requirement' docs/book/decisions/0001.html
+          grep -q 'silent corruption' docs/book/decisions/0002.html
+          grep -q 'PEP 649' docs/book/decisions/0003.html
+          grep -q 'NotSupported' docs/book/decisions/0004.html
+          grep -q 'predate this changelog' docs/book/changelog.html
+
+      - name: Upload the site
+        if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: docs/book
+
+  publish:
+    name: Publish to GitHub Pages
+    needs: build
+    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      # What actions/deploy-pages needs to publish: nothing wider.
+      pages: write
+      id-token: write
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v5

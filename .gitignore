@@ -59,8 +59,8 @@ coverage.xml
 
 .DS_Store
 
-# Sphinx documentation
-docs/_build/
+# Documentation site (mdBook output)
+docs/book/
 
 # PyCharm
 .idea/

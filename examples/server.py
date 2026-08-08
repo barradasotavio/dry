@@ -1,9 +1,13 @@
 """Renders a URL served by a local HTTP server.
 
-The server runs in its own *process*, not a thread: `wv.run()` holds the GIL for
-as long as the window is open, so a server in a `threading.Thread` would never
-accept a single connection. Most local content wants `wv.root` instead — see
-`root.py` — and needs no server at all.
+The server runs in its own *process*, which keeps a crash in the server from
+taking the window with it. A `threading.Thread` also works: `run()` releases the
+GIL before the event loop takes the main thread, so Python threads keep running
+for the life of the window. That was not true before 0.4.0, when `run()` held
+the GIL and a threaded server accepted no connection at all.
+
+Most local content wants `wv.root` instead — see `root.py` — and needs no server
+at all.
 """
 
 from functools import partial
