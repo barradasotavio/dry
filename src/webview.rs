@@ -255,6 +255,10 @@ fn percent_decode(input: &str) -> String {
   String::from_utf8_lossy(&decoded).into_owned()
 }
 
+/// The one handler every message from the frontend arrives at, on the thread
+/// that owns the window. Neither branch blocks: a window request is a message
+/// to the event loop, and a Call is handed to the portal and left to finish on
+/// its own thread.
 pub fn build_ipc_handler(
   api: Option<HashMap<String, Py<PyAny>>>, event_loop_proxy: EventLoopProxy<AppEvent>,
 ) -> impl Fn(Request<String>) + 'static {
@@ -267,7 +271,7 @@ pub fn build_ipc_handler(
     }
 
     if let Some(api) = &api
-      && let Err(err) = handle_api_requests(request_body, api, &event_loop_proxy)
+      && let Err(err) = handle_api_requests(request_body, api)
     {
       logs::error(
         logs::BRIDGE,

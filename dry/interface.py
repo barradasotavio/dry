@@ -296,6 +296,19 @@ class Webview:
     def run(self):
         """
         Run the webview window, in a blocking loop.
+
+        This call owns the process: the GUI event loop takes the main thread and
+        does not give it back, and closing the window exits the interpreter, so
+        nothing after `run()` executes. An application therefore cannot make
+        `asyncio.run(main())` its entry point — Dry starts an asyncio loop of its
+        own on a background thread, and the developer's async code lives inside
+        Api callbacks, which are awaited on that loop.
+
+        A callback declared with `async def` is scheduled onto that loop, and any
+        other callback runs in a thread pool, so a slow one no longer freezes the
+        window. Both consequences follow: callbacks run concurrently, and an Api
+        whose callables share state must make that state thread-safe. See
+        ADR-0001.
         """
         html, url = self._content()
 

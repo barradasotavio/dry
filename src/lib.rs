@@ -15,7 +15,7 @@ use tao::{
 use wry::WebView;
 
 use errors::{BridgeError, WebviewError, catch_panic};
-use events::{AppEvent, PROXY, run_event_loop};
+use events::{AppEvent, PROXY, run_event_loop, send_to_event_loop};
 use webview::{build_ipc_handler, build_webview};
 use window::build_window;
 
@@ -42,10 +42,40 @@ struct Settings {
   user_data_folder: String,
 }
 
+/// A Webview open on screen, on its way to the event loop.
+///
+/// The wrapper exists to cross `Python::detach`, which asks for something
+/// `Send`. That bound is not about threads here — `detach` runs the closure on
+/// the thread that called it, and none of this may ever leave the main thread
+/// anyway. It is how PyO3 keeps a `Python` token from being carried past the
+/// point where the GIL is released, and this carries none.
+struct Opened {
+  event_loop: EventLoop<AppEvent>,
+  window: Window,
+  webview: WebView,
+}
+
+unsafe impl Send for Opened {}
+
+impl Opened {
+  /// Hands the main thread to the event loop, for good.
+  fn show(self) {
+    run_event_loop(self.event_loop, self.window, self.webview);
+  }
+}
+
 #[pyfunction]
 fn run(py: Python<'_>, settings: Settings) -> PyResult<()> {
-  let (event_loop, window, webview) = catch_panic(|| open(py, settings))?;
-  run_event_loop(event_loop, window, webview);
+  let opened = catch_panic(|| open(py, settings))?;
+
+  // The GIL goes back to Python before the event loop takes the main thread,
+  // and never comes back: `tao::EventLoop::run` does not return, it exits the
+  // process. Holding it would be holding it for the life of the application,
+  // and no callback on any other thread could ever run — which is the whole
+  // point of the portal. Everything the event loop needs from Python from
+  // here on reattaches through `Python::attach`.
+  py.detach(move || opened.show());
+
   Ok(())
 }
 
@@ -54,9 +84,7 @@ fn run(py: Python<'_>, settings: Settings) -> PyResult<()> {
 /// `PanicError` instead of killing the interpreter. The event loop itself
 /// runs outside it: unwinding through a platform event loop is not something
 /// that can be caught safely.
-fn open(
-  py: Python<'_>, settings: Settings,
-) -> PyResult<(EventLoop<AppEvent>, Window, WebView)> {
+fn open(py: Python<'_>, settings: Settings) -> PyResult<Opened> {
   if let Some(api) = &settings.api {
     for (name, entry) in api {
       if !entry.bind(py).is_callable() {
@@ -107,24 +135,15 @@ fn open(
     WebviewError::new_err(format!("The web content could not be built: {err}"))
   })?;
 
-  Ok((event_loop, window, webview))
+  Ok(Opened {
+    event_loop,
+    window,
+    webview,
+  })
 }
 
 #[pyfunction]
 fn send_event(message: &str) -> PyResult<()> {
-  if let Some(sender) = &*PROXY
-    .get()
-    .ok_or_else(|| BridgeError::new_err("The Bridge is not initialized."))?
-    .lock()
-    .map_err(|_| BridgeError::new_err("The Bridge is poisoned."))?
-  {
-    sender
-      .send_event(AppEvent::FromPython(message.to_string()))
-      .map_err(|err| {
-        BridgeError::new_err(format!("The Event could not be sent: {err}"))
-      })?;
-    Ok(())
-  } else {
-    Err(BridgeError::new_err("The Bridge is not running."))
-  }
+  send_to_event_loop(AppEvent::FromPython(message.to_string()))
+    .map_err(BridgeError::new_err)
 }

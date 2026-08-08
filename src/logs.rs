@@ -6,10 +6,7 @@
 //! installs a `NullHandler` on `dry`, so an application that configures
 //! nothing sees nothing.
 
-use pyo3::{
-  PyErr, PyResult, Python,
-  types::{PyAnyMethods, PyDict, PyDictMethods},
-};
+use pyo3::{PyResult, Python, types::PyAnyMethods};
 
 /// Opening the Webview, and the window it lives in.
 pub const WEBVIEW: &str = "dry.webview";
@@ -18,44 +15,28 @@ pub const WEBVIEW: &str = "dry.webview";
 pub const BRIDGE: &str = "dry.bridge";
 
 pub fn debug(logger: &str, message: impl AsRef<str>) {
-  record(logger, "debug", message.as_ref(), None);
+  record(logger, "debug", message.as_ref());
 }
 
 pub fn warning(logger: &str, message: impl AsRef<str>) {
-  record(logger, "warning", message.as_ref(), None);
+  record(logger, "warning", message.as_ref());
 }
 
 pub fn error(logger: &str, message: impl AsRef<str>) {
-  record(logger, "error", message.as_ref(), None);
-}
-
-/// An error record carrying a Python exception, so the handler that formats
-/// it gets the traceback too.
-pub fn exception(logger: &str, message: impl AsRef<str>, error: &PyErr) {
-  record(logger, "error", message.as_ref(), Some(error));
+  record(logger, "error", message.as_ref());
 }
 
 /// A failure to log is not worth failing over, and there is nowhere left to
 /// report it to, so it is dropped.
-fn record(logger: &str, level: &str, message: &str, error: Option<&PyErr>) {
+fn record(logger: &str, level: &str, message: &str) {
   Python::attach(|py| {
-    let _ = emit(py, logger, level, message, error);
+    let _ = emit(py, logger, level, message);
   });
 }
 
-fn emit(
-  py: Python<'_>, logger: &str, level: &str, message: &str, error: Option<&PyErr>,
-) -> PyResult<()> {
-  let logger = py.import("logging")?.call_method1("getLogger", (logger,))?;
-  match error {
-    Some(error) => {
-      let keywords = PyDict::new(py);
-      keywords.set_item("exc_info", error.value(py))?;
-      logger.call_method(level, (message,), Some(&keywords))?;
-    },
-    None => {
-      logger.call_method1(level, (message,))?;
-    },
-  }
+fn emit(py: Python<'_>, logger: &str, level: &str, message: &str) -> PyResult<()> {
+  py.import("logging")?
+    .call_method1("getLogger", (logger,))?
+    .call_method1(level, (message,))?;
   Ok(())
 }

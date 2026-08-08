@@ -10,6 +10,19 @@ use crate::logs;
 
 pub static PROXY: OnceLock<Mutex<Option<EventLoopProxy<AppEvent>>>> = OnceLock::new();
 
+/// Hands an AppEvent to the running event loop, from whichever thread holds
+/// it. Every reply to a Call travels this way: a callback finishes on a pool
+/// thread or on the asyncio loop, and the JavaScript that settles its Promise
+/// has to be evaluated back on the thread that owns the window.
+pub fn send_to_event_loop(event: AppEvent) -> Result<(), String> {
+  let proxy = PROXY.get().ok_or("The Bridge is not initialized.")?;
+  let guard = proxy.lock().map_err(|_| "The Bridge is poisoned.")?;
+  let sender = guard.as_ref().ok_or("The Bridge is not running.")?;
+  sender
+    .send_event(event)
+    .map_err(|err| format!("The Event could not be sent: {err}"))
+}
+
 #[derive(Debug)]
 pub enum AppEvent {
   RunJavascript(String),
