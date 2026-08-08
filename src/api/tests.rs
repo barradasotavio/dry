@@ -2,8 +2,8 @@
 //!
 //! The Completion is exercised straight from Rust: it is the piece that
 //! decides whether a Call still has an answer owing, and none of that needs a
-//! window. The portal is loaded on its own, without the package around it, so
-//! the dispatch that keeps a callback off the event-loop thread can be watched
+//! window. The portal is loaded without the `dry` package around it, so the
+//! dispatch that keeps a callback off the event-loop thread can be watched
 //! happening — a slow callable handed back immediately, two of them
 //! overlapping, a coroutine awaited — again with no window anywhere.
 
@@ -12,7 +12,7 @@ use pyo3::{
   types::{PyAnyMethods, PyDict, PyDictMethods, PyModule},
 };
 use std::{
-  ffi::CString,
+  ffi::{CStr, CString},
   sync::atomic::{AtomicUsize, Ordering},
 };
 
@@ -108,25 +108,71 @@ class Answer:
         return self
 "#;
 
-/// Loads `dry/portal.py` by itself, without the package that would drag the
-/// extension module in with it, and runs `body` against it. The body leaves
-/// what it found in `verdict`.
+/// Puts `dry/portal.py` inside a package of its own and imports it there.
 ///
-/// Every test gets a portal of its own — a loop, a thread pool and a name
-/// nothing else answers to — so that one test's shutdown is not another's.
+/// The synthetic package carries nothing but a search path pointing at `dry/`,
+/// which is all a relative import needs: `from .signature import mismatch`
+/// finds the real `dry/signature.py`, and so will every relative import
+/// written after it. Importing the actual `dry` package instead would run its
+/// `__init__`, which reaches for the extension module — and the extension only
+/// exists once maturin has built it, so no `cargo test` can import it. That is
+/// the one relative import the portal still cannot make: a sibling that pulls
+/// the extension in, as `dry/exceptions.py` does. A sibling of pure Python,
+/// which is what the portal reaches for, resolves here exactly as it does in
+/// an installed package.
+const LOAD_PORTAL: &CStr = cr#"
+from importlib.machinery import ModuleSpec
+from importlib.util import module_from_spec, spec_from_file_location
+from sys import modules
+
+spec = ModuleSpec(package, None, is_package=True)
+spec.submodule_search_locations = [directory]
+modules[package] = module_from_spec(spec)
+
+spec = spec_from_file_location(f'{package}.portal', f'{directory}/portal.py')
+portal = module_from_spec(spec)
+modules[spec.name] = portal
+spec.loader.exec_module(portal)
+"#;
+
+/// The portal, loaded under `package` and answering to nothing else.
+///
+/// The name is the whole of the isolation. `sys.modules` hands back the module
+/// object already registered under a name, and the portal keeps state for the
+/// process — a loop, a thread pool, a closed flag — so two tests loading under
+/// one name would be running the same portal, and one test's shutdown would be
+/// another's.
+fn portal_in<'py>(py: Python<'py>, package: &str) -> Bound<'py, PyModule> {
+  let globals = PyDict::new(py);
+  globals
+    .set_item("package", package)
+    .expect("the package name should be reachable from the loader");
+  globals
+    .set_item("directory", concat!(env!("CARGO_MANIFEST_DIR"), "/dry"))
+    .expect("the package directory should be reachable from the loader");
+
+  py.run(LOAD_PORTAL, Some(&globals), None)
+    .expect("the portal should import");
+
+  globals
+    .get_item("portal")
+    .expect("the loader should leave the portal")
+    .expect("the loader should leave the portal")
+    .cast_into::<PyModule>()
+    .expect("the portal should be a module")
+}
+
+/// Loads a portal of its own and runs `body` against it. The body leaves what
+/// it found in `verdict`.
 fn through_the_portal(body: &str) -> String {
   static PORTALS: AtomicUsize = AtomicUsize::new(0);
-  let name = CString::new(format!(
+  let name = format!(
     "dry_portal_tested_{}",
     PORTALS.fetch_add(1, Ordering::Relaxed)
-  ))
-  .expect("the module name should be readable");
+  );
 
   Python::attach(|py| {
-    let source = CString::new(include_str!("../../dry/portal.py"))
-      .expect("the portal should be readable");
-    let portal = PyModule::from_code(py, &source, c"portal.py", &name)
-      .expect("the portal should import");
+    let portal = portal_in(py, &name);
 
     let globals = PyDict::new(py);
     globals
@@ -287,6 +333,10 @@ verdict = f'{type(error).__name__}: {error}'
   );
 }
 
+/// The refusal comes from `dry/signature.py`, reached by the relative import
+/// the portal is loaded inside its package for: the wording is `mismatch`'s
+/// own, so a Call refused before it ran is what this asserts, not a callback
+/// that ran and raised `TypeError` by itself.
 #[test]
 fn a_call_with_the_wrong_arguments_rejects_rather_than_hangs() {
   assert_eq!(
@@ -297,11 +347,60 @@ async def needs_two(first, second):
 
 answer = Answer()
 portal.dispatch('needs_two', needs_two, (1,), answer)
-verdict = type(answer.wait().error).__name__
+error = answer.wait().error
+verdict = f'{type(error).__name__}: {error}'
 "#
     ),
-    "TypeError"
+    "TypeError: needs_two takes 2 arguments, received 1. second was not passed."
   );
+}
+
+/// The isolation every portal test rests on, checked rather than assumed: two
+/// loads are two modules, with two sets of the state the portal keeps for the
+/// process. Shutting one down leaves the other open for business.
+#[test]
+fn each_load_is_a_portal_of_its_own() {
+  Python::attach(|py| {
+    silence_logs(py);
+    let first = portal_in(py, "dry_portal_isolated_a");
+    let second = portal_in(py, "dry_portal_isolated_b");
+
+    assert!(!first.is(&second), "two loads are two modules");
+
+    let globals = PyDict::new(py);
+    globals
+      .set_item("first", &first)
+      .expect("the first portal should be reachable from the test");
+    globals
+      .set_item("second", &second)
+      .expect("the second portal should be reachable from the test");
+
+    let script = CString::new(format!(
+      "{HARNESS}
+first.dispatch('name', lambda: 'answered', (), Answer())
+first.shutdown()
+
+answer = Answer()
+second.dispatch('name', lambda: 'answered', (), answer)
+verdict = answer.wait().value
+second.shutdown()
+"
+    ))
+    .expect("the test body should be readable");
+    py.run(&script, Some(&globals), None)
+      .expect("the test body should run");
+
+    let verdict: String = globals
+      .get_item("verdict")
+      .expect("the test body should leave a verdict")
+      .expect("the test body should leave a verdict")
+      .extract()
+      .expect("the verdict should be a string");
+    assert_eq!(
+      verdict, "answered",
+      "a closed portal did not close the other"
+    );
+  });
 }
 
 #[test]
