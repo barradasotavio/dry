@@ -26,6 +26,8 @@ class Webview:
         min_size (tuple[int, int]): Minimum window dimensions (width, height).
         size (tuple[int, int]): Initial window dimensions (width, height).
         decorations (bool): Whether to show window decorations (title bar, borders).
+            Without them the Webview draws its own resize edges, on every platform
+            it supports.
         icon_path (str | PathLike[str] | None): Path to the window icon (.ico format).
         html (str | None): An HTML string to render.
         url (str | None): A URL to load.

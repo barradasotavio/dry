@@ -9,6 +9,8 @@ use tao::{
 
 use crate::{events::AppEvent, logs};
 
+pub mod resize;
+
 pub const WINDOW_FUNCTIONS_JS: &str = include_str!("js/window_functions.js");
 pub const WINDOW_EVENTS_JS: &str = include_str!("js/window_events.js");
 pub const WINDOW_BORDERS_JS: &str = include_str!("js/window_borders.js");
@@ -17,6 +19,7 @@ pub fn build_window(
   event_loop: &EventLoop<AppEvent>, title: String, min_size: (u32, u32),
   size: (u32, u32), decorations: bool, icon_path: Option<String>,
 ) -> Result<Window, OsError> {
+  resize::remember_min_size(min_size);
   let min_size = LogicalSize::new(min_size.0, min_size.1);
   let size = LogicalSize::new(size.0, size.1);
   let mut window_builder = WindowBuilder::new()
@@ -85,6 +88,18 @@ pub fn handle_window_requests(request_body: &String, proxy: &EventLoopProxy<AppE
         },
       };
       proxy.send_event(AppEvent::ResizeWindow(direction))
+    },
+    // A frontend that has no native drag-resize to call runs the drag itself
+    // and reports the pointer on every move. See `resize` and ADR-0004.
+    "resize_drag" => match resize::parse(&mut request) {
+      Some(drag) => proxy.send_event(AppEvent::ResizeDragged(drag)),
+      None => {
+        logs::error(
+          logs::WEBVIEW,
+          format!("Invalid resize report: {request_body}"),
+        );
+        return;
+      },
     },
     _ => {
       logs::error(logs::WEBVIEW, format!("Invalid window control: {action}"));
