@@ -6,8 +6,8 @@ that the window's own states come out of the same bus as everything else and
 reach both halves of it. None of that can be seen without a window: the states
 are the platform's, and half the listeners are JavaScript in a page. So the
 test opens a real window in a subprocess, drives it through maximize,
-unmaximize, minimize, restore and a refused close, and reads the account both
-sides left in a journal.
+unmaximize, minimize, restore, hide, show and a refused close, and reads the
+account both sides left in a journal.
 
 See tests/window_state_window.py for the round it runs and why it has to be a
 subprocess.
@@ -158,6 +158,27 @@ class WindowEventsReachBothSides(unittest.TestCase):
         self.assertTrue(
             self.page_saw('restored'),
             f'No frontend listener heard window:restored.{self.context}',
+        )
+
+    def test_hiding_and_showing_reach_both_sides(self):
+        # A window taken off the screen without being closed: the process is
+        # still running, the page is still loaded, and both halves of the
+        # Bridge are told it went and told it came back.
+        self.assertTrue(
+            self.python_saw('hidden'),
+            f'No Python listener heard window:hidden.{self.context}',
+        )
+        self.assertTrue(
+            self.page_saw('hidden'),
+            f'No frontend listener heard window:hidden.{self.context}',
+        )
+        self.assertTrue(
+            self.python_saw('shown'),
+            f'No Python listener heard window:shown.{self.context}',
+        )
+        self.assertTrue(
+            self.page_saw('shown'),
+            f'No frontend listener heard window:shown.{self.context}',
         )
 
     def test_a_resize_carries_the_new_size_in_logical_pixels(self):

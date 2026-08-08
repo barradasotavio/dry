@@ -19,6 +19,7 @@ use crate::{events::RESERVED_PREFIX, types::PythonType};
 const OPEN: WindowState = WindowState {
   maximized: false,
   minimized: false,
+  fullscreen: false,
   visible: true,
   focused: true,
   size: (800, 600),
@@ -243,6 +244,7 @@ fn several_changes_in_one_turn_arrive_in_one_fixed_order() {
     visible: false,
     minimized: true,
     maximized: false,
+    fullscreen: false,
     focused: false,
     size: (800, 600),
     position: (100, 100),
@@ -251,6 +253,7 @@ fn several_changes_in_one_turn_arrive_in_one_fixed_order() {
     visible: true,
     minimized: false,
     maximized: true,
+    fullscreen: false,
     focused: true,
     size: (1440, 850),
     position: (0, 0),
@@ -272,4 +275,63 @@ fn the_state_that_is_remembered_is_the_one_that_was_reported() {
   let (remembered, _) = advance(OPEN, moved);
   assert_eq!(remembered, moved);
   assert_eq!(names(remembered, moved), Vec::<&str>::new());
+}
+
+#[test]
+fn the_state_query_answers_with_the_whole_reading() {
+  // The shape both sides read: the flags as booleans, and the two values that
+  // also travel as Events keeping the shape they have there, so a frontend can
+  // hand a `window:resized` value and a queried size to the same code.
+  let reading = WindowState {
+    maximized: true,
+    fullscreen: true,
+    ..OPEN
+  };
+  assert_eq!(
+    super::value(&reading),
+    PythonType::Object(vec![
+      ("maximized".to_string(), PythonType::Boolean(true)),
+      ("minimized".to_string(), PythonType::Boolean(false)),
+      ("fullscreen".to_string(), PythonType::Boolean(true)),
+      ("visible".to_string(), PythonType::Boolean(true)),
+      ("focused".to_string(), PythonType::Boolean(true)),
+      (
+        "size".to_string(),
+        object(&[("width", 800), ("height", 600)])
+      ),
+      ("position".to_string(), object(&[("x", 100), ("y", 100)])),
+    ])
+  );
+}
+
+#[test]
+fn the_state_query_reports_what_the_events_report() {
+  // Whatever the query says about size and position is the same number the
+  // matching Event carries, because it is the same reading — a query in
+  // physical pixels and an Event in logical ones would be one library
+  // answering the same question two ways.
+  let moved = WindowState {
+    size: (1024, 768),
+    position: (-40, 12),
+    ..OPEN
+  };
+  let PythonType::Object(fields) = super::value(&moved) else {
+    panic!("the state query should answer with an object");
+  };
+  let field = |name: &str| {
+    fields
+      .iter()
+      .find(|(key, _)| key == name)
+      .map(|(_, value)| value.clone())
+  };
+  assert_eq!(field("size"), value(OPEN, moved, RESIZED));
+  assert_eq!(field("position"), value(OPEN, moved, MOVED));
+}
+
+#[test]
+fn a_window_nobody_has_read_yet_has_no_state_to_report() {
+  // The query answers from the last reading the event loop took, and before
+  // `initial` there is none. Python turns this into the error naming the
+  // Webview that is not running, rather than inventing a window at 0,0.
+  assert!(super::snapshot().is_none());
 }

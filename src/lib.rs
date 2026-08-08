@@ -24,6 +24,19 @@ fn dry(m: &Bound<'_, PyModule>) -> PyResult<()> {
   m.add_function(wrap_pyfunction!(run, m)?)?;
   m.add_function(wrap_pyfunction!(events::emit_event, m)?)?;
   m.add_function(wrap_pyfunction!(events::eval_js, m)?)?;
+  // Runtime window control: the settings a Webview may still be assigned once
+  // it is running, and the query that says what the window is doing.
+  m.add_function(wrap_pyfunction!(window::set_window_title, m)?)?;
+  m.add_function(wrap_pyfunction!(window::set_window_size, m)?)?;
+  m.add_function(wrap_pyfunction!(window::set_window_min_size, m)?)?;
+  m.add_function(wrap_pyfunction!(window::set_window_decorations, m)?)?;
+  m.add_function(wrap_pyfunction!(window::set_window_icon, m)?)?;
+  m.add_function(wrap_pyfunction!(window::set_window_position, m)?)?;
+  m.add_function(wrap_pyfunction!(window::set_window_visible, m)?)?;
+  m.add_function(wrap_pyfunction!(window::set_window_maximized, m)?)?;
+  m.add_function(wrap_pyfunction!(window::set_window_minimized, m)?)?;
+  m.add_function(wrap_pyfunction!(window::set_window_fullscreen, m)?)?;
+  m.add_function(wrap_pyfunction!(window::state::window_state, m)?)?;
   errors::register(m)?;
   Ok(())
 }

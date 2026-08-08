@@ -52,6 +52,16 @@
 //! avoid. Comparing against the last reading gives the trailing edge for free:
 //! the last turn of the loop always carries the final geometry.
 //!
+//! ## Asking instead of listening
+//!
+//! The Events say what changed; the state query says what is. A frontend that
+//! has only just loaded, or a Python callback that was not listening, has
+//! observed nothing and still has to draw a maximize button one way round.
+//! `window_state()` answers from the last reading the loop took — the same
+//! reading the diff was taken against — so the query and the Events can never
+//! disagree about the window, and no second, slower source of truth exists to
+//! disagree with.
+//!
 //! ## A window that is not on screen has nothing to report
 //!
 //! While the window is minimized or hidden, the platform's answers for size,
@@ -60,13 +70,18 @@
 //! their last observed values until the window comes back, so a minimize does
 //! not fire a spurious `moved`, and a restore does not have to correct one.
 
-use std::sync::OnceLock;
+use pyo3::{Bound, PyAny, PyResult, Python};
+use std::sync::Mutex;
 use tao::{
   dpi::{LogicalPosition, LogicalSize},
   window::Window,
 };
 
-use crate::{events, types::PythonType};
+use crate::{
+  errors::WebviewError,
+  events,
+  types::{PythonType, to_python},
+};
 
 #[cfg(test)]
 mod tests;
@@ -102,6 +117,11 @@ pub const CLOSE_REQUESTED: &str = "window:close-requested";
 pub struct WindowState {
   pub maximized: bool,
   pub minimized: bool,
+  /// Whether the window has taken over a whole screen. Carried in the state
+  /// query and in nothing else: a fullscreen has no Event of its own, because
+  /// macOS reports one as a resize and a move and there would be no second
+  /// route to test the name against.
+  pub fullscreen: bool,
   pub visible: bool,
   pub focused: bool,
   /// Inner size — the area the frontend renders into, the same measurement
@@ -115,11 +135,11 @@ pub struct WindowState {
 /// What the window measures on the outside minus what the frontend renders
 /// into, in logical pixels: the titlebar, and any border.
 ///
-/// Measured once, from the window as it was built, and then held — because it
-/// is the only moment tao can be asked. On macOS wry takes the window's
-/// content view for its own, which leaves the view tao measures orphaned and
-/// its frame frozen at the size the window opened with, so `inner_size()` goes
-/// on reporting that size through every maximize and every drag. `outer_size()`
+/// Measured from the window as it was built, and then held — because that is
+/// the only moment tao can be asked. On macOS wry takes the window's content
+/// view for its own, which leaves the view tao measures orphaned and its frame
+/// frozen at the size the window opened with, so `inner_size()` goes on
+/// reporting that size through every maximize and every drag. `outer_size()`
 /// reads the window itself and stays honest, so the content size is taken from
 /// there instead.
 ///
@@ -127,7 +147,107 @@ pub struct WindowState {
 /// number of logical pixels on every display and a window that moves to a
 /// screen of another scale factor must not report a different content size for
 /// the same window.
-static FRAME_INSET: OnceLock<(f64, f64)> = OnceLock::new();
+///
+/// Not fixed for the life of the window, because `decorations` may be assigned
+/// on a running Webview and a window that has just lost its titlebar renders
+/// into all of itself. See `decorations_changed`.
+static FRAME_INSET: Mutex<Option<(f64, f64)>> = Mutex::new(None);
+
+/// The inset measured while the window still had its decorations.
+///
+/// Kept so that decorations turned off and on again report the same content
+/// size as before, on the platform where the frame cannot be measured twice.
+static DECORATED_INSET: Mutex<Option<(f64, f64)>> = Mutex::new(None);
+
+fn frame_inset() -> (f64, f64) {
+  FRAME_INSET
+    .lock()
+    .ok()
+    .and_then(|inset| *inset)
+    .unwrap_or((0.0, 0.0))
+}
+
+fn set_frame_inset(inset: (f64, f64), decorated: bool) {
+  if let Ok(mut current) = FRAME_INSET.lock() {
+    *current = Some(inset);
+  }
+  if decorated && let Ok(mut decorated_inset) = DECORATED_INSET.lock() {
+    *decorated_inset = Some(inset);
+  }
+}
+
+/// The frame the window has now, measured or remembered.
+///
+/// Windows answers `inner_size` honestly, so the frame is measured again
+/// whenever it changes — which matters there, because an undecorated tao
+/// window keeps its resize frame and is still larger than the page it shows.
+///
+/// macOS cannot be asked twice, so the two states are known rather than
+/// measured: an undecorated window there is borderless and owes nothing, and a
+/// decorated one owes the titlebar measured while the window was still tao's.
+/// A window built undecorated and decorated afterwards is the one case with
+/// nothing to remember; it reports the outer size until it is undecorated
+/// again, which is a titlebar's worth of error on a window nobody has yet
+/// asked for.
+fn measure_inset(window: &Window) -> (f64, f64) {
+  let decorated = window.is_decorated();
+
+  #[cfg(not(target_os = "macos"))]
+  {
+    let scale = window.scale_factor();
+    let outer: LogicalSize<f64> = window.outer_size().to_logical(scale);
+    let inner: LogicalSize<f64> = window.inner_size().to_logical(scale);
+    let _ = decorated;
+    (
+      (outer.width - inner.width).max(0.0),
+      (outer.height - inner.height).max(0.0),
+    )
+  }
+
+  #[cfg(target_os = "macos")]
+  {
+    if !decorated {
+      return (0.0, 0.0);
+    }
+    DECORATED_INSET
+      .lock()
+      .ok()
+      .and_then(|inset| *inset)
+      .unwrap_or((0.0, 0.0))
+  }
+}
+
+/// The window's decorations were turned on or off, so the frame it owes has
+/// changed and the next reading has to be taken against the new one.
+pub fn decorations_changed(window: &Window) {
+  set_frame_inset(measure_inset(window), window.is_decorated());
+}
+
+/// The last reading the event loop took, for whoever asks between two turns.
+///
+/// The state query answers from here rather than from the window, and that is
+/// deliberate: the window may only be touched on the thread that draws it,
+/// while a Python listener asking what the window is doing runs on the portal
+/// (ADR-0001). Answering from the reading the diff was taken against also
+/// means the query and the Events can never disagree — a listener told
+/// `window:maximized` and asking immediately afterwards is told the same
+/// thing, because it is the same reading.
+///
+/// At most one turn of the event loop out of date, and a turn is exactly how
+/// long it takes for anything the caller just asked for to be true anyway.
+static CURRENT: Mutex<Option<WindowState>> = Mutex::new(None);
+
+/// Puts a reading where the state query can find it.
+fn remember(state: WindowState) {
+  if let Ok(mut current) = CURRENT.lock() {
+    *current = Some(state);
+  }
+}
+
+/// The last reading, or `None` before the window has been read at all.
+pub fn snapshot() -> Option<WindowState> {
+  CURRENT.lock().ok().and_then(|current| *current)
+}
 
 /// The first reading, taken before the loop starts.
 ///
@@ -140,22 +260,28 @@ pub fn initial(window: &Window) -> WindowState {
   let scale = window.scale_factor();
   let outer: LogicalSize<f64> = window.outer_size().to_logical(scale);
   let inner: LogicalSize<f64> = window.inner_size().to_logical(scale);
-  let _ = FRAME_INSET.set((
-    (outer.width - inner.width).max(0.0),
-    (outer.height - inner.height).max(0.0),
-  ));
+  set_frame_inset(
+    (
+      (outer.width - inner.width).max(0.0),
+      (outer.height - inner.height).max(0.0),
+    ),
+    window.is_decorated(),
+  );
 
-  read(
+  let state = read(
     window,
     &WindowState {
       maximized: false,
       minimized: false,
+      fullscreen: false,
       visible: true,
       focused: false,
       size: (0, 0),
       position: (0, 0),
     },
-  )
+  );
+  remember(state);
+  state
 }
 
 /// The area the frontend renders into, from what the window measures on the
@@ -175,7 +301,7 @@ fn content_size(outer: LogicalSize<f64>, inset: (f64, f64)) -> (i64, i64) {
 pub fn read(window: &Window, previous: &WindowState) -> WindowState {
   let scale = window.scale_factor();
   let outer: LogicalSize<f64> = window.outer_size().to_logical(scale);
-  let size = content_size(outer, *FRAME_INSET.get_or_init(|| (0.0, 0.0)));
+  let size = content_size(outer, frame_inset());
   let position = match window.outer_position() {
     Ok(position) => {
       let position: LogicalPosition<f64> = position.to_logical(scale);
@@ -187,6 +313,7 @@ pub fn read(window: &Window, previous: &WindowState) -> WindowState {
   WindowState {
     maximized: window.is_maximized(),
     minimized,
+    fullscreen: window.fullscreen().is_some(),
     // macOS answers `is_visible` with false for a window that is only
     // miniaturized, so a minimize there would otherwise arrive as
     // `window:hidden` and `window:minimized` together — two names for one
@@ -288,6 +415,52 @@ fn size_value(size: (i64, i64)) -> PythonType {
   ])
 }
 
+/// One reading as the state query hands it over, to Python and to the
+/// frontend alike.
+///
+/// The same shape on both sides, and the two values that also travel as
+/// Events keep the shape they have there: `size` is `{width, height}` and
+/// `position` is `{x, y}`, so a frontend can hand what it was given by
+/// `window:resized` and what it read here to the same code.
+pub fn value(state: &WindowState) -> PythonType {
+  PythonType::Object(vec![
+    (
+      "maximized".to_string(),
+      PythonType::Boolean(state.maximized),
+    ),
+    (
+      "minimized".to_string(),
+      PythonType::Boolean(state.minimized),
+    ),
+    (
+      "fullscreen".to_string(),
+      PythonType::Boolean(state.fullscreen),
+    ),
+    ("visible".to_string(), PythonType::Boolean(state.visible)),
+    ("focused".to_string(), PythonType::Boolean(state.focused)),
+    ("size".to_string(), size_value(state.size)),
+    ("position".to_string(), position_value(state.position)),
+  ])
+}
+
+/// What the window is doing, for a caller who has not been listening.
+///
+/// The complement to the window Events: a frontend that has just loaded has
+/// observed no change at all, and a titlebar has to draw the maximize button
+/// one way or the other before anybody touches the window. Answers from the
+/// last reading the event loop took, which is the reading every window Event
+/// was a difference from.
+#[pyo3::pyfunction]
+pub fn window_state(py: Python<'_>) -> PyResult<Bound<'_, PyAny>> {
+  let state = snapshot().ok_or_else(|| {
+    WebviewError::new_err(
+      "The window is not open yet, so it has no state to report. Ask for it \
+       from inside a callback, once run() has the window on screen.",
+    )
+  })?;
+  to_python(py, &value(&state))
+}
+
 /// Reads the window, remembers it, and emits what changed to both sides.
 ///
 /// Called once per turn of the event loop. When nothing changed this reads six
@@ -297,6 +470,10 @@ pub fn sync(window: &Window, state: &mut WindowState) {
   let reading = read(window, state);
   let (after, events) = advance(*state, reading);
   *state = after;
+  // Before the Events, so a listener that asks what the window is doing the
+  // moment it hears one is told the state that Event announced, not the one
+  // before it.
+  remember(after);
   for (name, value) in events {
     events::emit_reserved(name, value);
   }

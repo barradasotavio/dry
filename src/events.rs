@@ -28,7 +28,7 @@ use crate::{
   errors::BridgeError,
   logs,
   types::{PythonType, from_python, to_python},
-  window::{resize, state},
+  window::{self, resize, state},
 };
 
 pub const EVENTS_JS: &str = include_str!("js/events.js");
@@ -64,6 +64,12 @@ pub enum AppEvent {
   CloseWindow,
   ResizeWindow(ResizeDirection),
   ResizeDragged(resize::Drag),
+  /// One setting assigned on a Webview that is already running. Applied to
+  /// the window here; the Event that says it happened comes from the state
+  /// diff, like any other change to the window.
+  ChangeWindow(window::Change),
+  /// The frontend asked what the window is doing, and is holding a Promise.
+  QueryWindowState,
 }
 
 /// What the frontend puts in front of an Event on the wire, so the one IPC
@@ -327,6 +333,37 @@ fn handle_app_event(
       }
     },
     AppEvent::ResizeDragged(drag) => resize::apply(&drag, window),
+    // Nothing is emitted here. The change lands on the window, and the
+    // reading taken at the end of this same turn of the loop is what tells
+    // both sides about it — so a size Python asked for and a size the user
+    // dragged arrive as the same Event, and a change the platform refused
+    // announces nothing.
+    AppEvent::ChangeWindow(change) => window::apply(change, window),
+    AppEvent::QueryWindowState => answer_state_query(webview),
+  }
+}
+
+/// Resolves the Promise the frontend's `window.dry.state()` is holding.
+///
+/// Every waiting caller is resolved with the one reading, because a reading
+/// taken now is the current answer to every question asked since the last one.
+///
+/// Nothing here can reach a page before the window has been read: the first
+/// reading is taken before the loop starts, and this runs on a turn of it.
+fn answer_state_query(webview: &WebView) {
+  let Some(reading) = state::snapshot() else {
+    logs::error(
+      logs::BRIDGE,
+      "The window state was asked for before the window had been read.",
+    );
+    return;
+  };
+  match to_string(&state::value(&reading)) {
+    Ok(value) => run_javascript(webview, &format!("window.dry.resolveState({value})")),
+    Err(err) => logs::error(
+      logs::BRIDGE,
+      format!("The window state could not be written: {err}"),
+    ),
   }
 }
 

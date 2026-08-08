@@ -1,8 +1,36 @@
 // Window controls, exposed as dry.minimize(), dry.toggleMaximize(),
-// dry.close(), dry.drag() and dry.resize(direction).
+// dry.close(), dry.drag(), dry.resize(direction) and dry.state().
 
 (() => {
     const send = (message) => window.ipc.postMessage(message);
+
+    // dry.state() is the complement to the window Events: they say what
+    // changed, this says what is. A page that has just loaded has observed
+    // nothing and still has to draw its maximize button one way round.
+    //
+    // It returns a Promise because the answer comes from the thread that owns
+    // the window. Every call waiting on the same trip is resolved with the
+    // same reading — a reading taken now answers every question asked since
+    // the last one, so a page polling it costs one trip either way. Rust
+    // resolves them through dry.resolveState, non-enumerable and non-writable
+    // like dry.resolveCall.
+    const waiting = [];
+
+    const state = () => new Promise((resolve) => {
+        waiting.push(resolve);
+        send('window_control:state');
+    });
+
+    const resolveState = (reading) => {
+        for (const resolve of waiting.splice(0)) resolve(reading);
+    };
+
+    Object.defineProperty(window.dry, 'resolveState', {
+        value: resolveState,
+        writable: false,
+        configurable: false,
+        enumerable: false,
+    });
 
     // macOS has no native drag-resize to hand a grab to — tao answers
     // NotSupported there — so dry.resize() runs the drag here instead, and
@@ -72,6 +100,7 @@
         toggleMaximize: () => send('window_control:toggle_maximize'),
         close: () => send('window_control:close'),
         resize,
+        state,
     };
 
     for (const [name, control] of Object.entries(controls)) {

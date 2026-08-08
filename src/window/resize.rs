@@ -11,7 +11,7 @@
 //! is dropped, coalesced or arrives late costs a frame rather than leaving the
 //! window permanently out of step with the cursor.
 
-use std::sync::{Mutex, OnceLock};
+use std::sync::Mutex;
 use tao::{
   dpi::{LogicalPosition, LogicalSize},
   window::Window,
@@ -19,11 +19,13 @@ use tao::{
 
 use crate::logs;
 
-/// The minimum inner size the window was built with, in logical pixels.
+/// The minimum inner size the window currently has, in logical pixels.
 ///
 /// The platform clamps a resize the user drives, but not a `set_inner_size`
-/// this module drives, so the clamp has to happen here.
-static MIN_SIZE: OnceLock<(f64, f64)> = OnceLock::new();
+/// this module drives, so the clamp has to happen here. Written again whenever
+/// `min_size` is assigned on a running Webview, so a drag cannot go on
+/// enforcing a minimum the window no longer has.
+static MIN_SIZE: Mutex<Option<(f64, f64)>> = Mutex::new(None);
 
 /// What the drag in progress has to remember between reports.
 static ANCHOR: Mutex<Option<Anchor>> = Mutex::new(None);
@@ -48,7 +50,9 @@ struct Anchor {
 }
 
 pub fn remember_min_size(min_size: (u32, u32)) {
-  let _ = MIN_SIZE.set((f64::from(min_size.0), f64::from(min_size.1)));
+  if let Ok(mut remembered) = MIN_SIZE.lock() {
+    *remembered = Some((f64::from(min_size.0), f64::from(min_size.1)));
+  }
 }
 
 /// One pointer report from a drag on a resize edge.
@@ -162,7 +166,11 @@ pub fn apply(drag: &Drag, window: &Window) {
     height = drag.pointer.1 - drag.grab.1;
   }
 
-  let (min_width, min_height) = MIN_SIZE.get().copied().unwrap_or((1.0, 1.0));
+  let (min_width, min_height) = MIN_SIZE
+    .lock()
+    .ok()
+    .and_then(|remembered| *remembered)
+    .unwrap_or((1.0, 1.0));
   if width < min_width {
     // The pinned edge stays put, so the one under drag stops at the minimum.
     if drag.west {

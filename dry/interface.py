@@ -3,9 +3,10 @@ from os import PathLike, environ
 from pathlib import Path
 from re import compile as compile_pattern
 from sys import argv, executable, platform
-from typing import Any, Callable
+from typing import Any, Callable, NamedTuple
 
 from . import dry, portal
+from .exceptions import WebviewError
 from .portal import CloseHook, Listener
 
 StrPath = str | PathLike[str]
@@ -63,6 +64,51 @@ def _derive_app_id() -> str:
     return f'dry.{slug}.{digest}'
 
 
+class WindowState(NamedTuple):
+    """
+    What the window is doing, in one reading.
+
+    The answer `Webview.state()` gives. Every field is also a property of its
+    own, and reading them one at a time is the same information — but a
+    reading is taken at one instant, so the fields of a `WindowState` cannot
+    contradict each other the way two properties read a moment apart can.
+
+    `size` and `position` are logical pixels, the unit every dimension in Dry
+    is in, and `size` is the area the frontend renders into — the same
+    measurement `size=` sets, and the same number the page reads back as
+    `window.innerWidth`.
+    """
+
+    maximized: bool
+    minimized: bool
+    fullscreen: bool
+    visible: bool
+    focused: bool
+    size: tuple[int, int]
+    position: tuple[int, int]
+
+
+def _read_state(reading: dict[str, Any]) -> WindowState:
+    """
+    The mapping the extension module answers with, as the public reading.
+
+    The two values that also travel as Events keep the shape they have there —
+    `{width, height}` and `{x, y}` — because that shape is what a frontend
+    reads. Python prefers a pair, so this is where they become one.
+    """
+    size: dict[str, Any] = reading['size']
+    position: dict[str, Any] = reading['position']
+    return WindowState(
+        maximized=bool(reading['maximized']),
+        minimized=bool(reading['minimized']),
+        fullscreen=bool(reading['fullscreen']),
+        visible=bool(reading['visible']),
+        focused=bool(reading['focused']),
+        size=(int(size['width']), int(size['height'])),
+        position=(int(position['x']), int(position['y'])),
+    )
+
+
 class Webview:
     """
     One native window rendering a web frontend, and the Bridge to it.
@@ -91,11 +137,29 @@ class Webview:
     the Webview reads only while it is being built, once `run()` has been
     called and reading it again is no longer possible.
 
+    The settings that are not fixed that way — `title`, `size`, `min_size`,
+    `decorations` and `icon_path` — apply to the window as they are assigned,
+    running or not. Beside them are the five states a window only has once it
+    is on screen: `position`, `visible`, `maximized`, `minimized` and
+    `fullscreen`, which raise before `run()` rather than pretending to be
+    settings. Every one of these is a property, so changing the window and
+    reading it back are the same word:
+
+        wv.maximized = True
+        wv.title = f'{document} — My App'
+        wv.visible = False
+
+    A change made this way is announced exactly as a change the user made:
+    Dry reads the window once per turn of its event loop and emits the
+    `window:` Events for whatever moved, so a frontend stays in sync without
+    caring who asked. `wv.state()` answers the same reading in one piece for
+    a caller that needs the current value rather than the change.
+
     Args:
         title: The window title. Purely cosmetic — it no longer decides where
             data is stored, so it may contain any character.
-        size: Initial window dimensions in logical pixels, independent of
-            display scaling.
+        size: The window dimensions in logical pixels, independent of display
+            scaling. Assignable afterwards, which resizes the window.
         min_size: Minimum window dimensions in logical pixels.
         decorations: Whether to show the native title bar and borders. Without
             them the Webview draws its own resize edges, on every platform it
@@ -196,60 +260,249 @@ class Webview:
                 f'{setting} to Webview(...) instead.'
             )
 
+    def _require_running(self, name: str) -> None:
+        """
+        Refuse a question only a window on screen can answer.
+        """
+        if not self._running:
+            raise RuntimeError(
+                f'{name} belongs to a window that is on screen, and this Webview '
+                f'has not opened one yet. Ask for it once run() has, from inside '
+                f'an Api callable, an Event listener or the close hook.'
+            )
+
+    def _reading(self) -> WindowState | None:
+        """
+        What the window is doing, or None when there is no window to ask.
+
+        The window is opened by `run()` and read a moment later, so a callback
+        on another thread can be quick enough to ask before the first reading
+        exists. That is not worth an exception on a getter that has a
+        perfectly good answer of its own to fall back on.
+        """
+        if not self._running:
+            return None
+        try:
+            return _read_state(dry.window_state())
+        except WebviewError:
+            return None
+
+    def state(self) -> WindowState:
+        """
+        What the window is doing right now, in one reading:
+
+            if not wv.state().maximized:
+                wv.maximized = True
+
+        The complement to the window Events. They say what changed, and a
+        listener that was not registered when it changed heard nothing; this
+        says what is, for a frontend or a callback that has to draw a maximize
+        button one way round before anybody touches the window.
+
+        Answers from the last reading the event loop took, which is the reading
+        every `window:` Event was a difference from, so the query and the
+        Events can never disagree. A change assigned here applies on the next
+        turn of that loop, so a reading taken in the same breath as an
+        assignment may still be the state before it — wait for the Event that
+        announces the change if the order matters.
+
+        Raises if the Webview is not running: a window that does not exist has
+        no size, and answering with the settings it will be built from would be
+        a guess dressed as a measurement.
+        """
+        self._require_running('state()')
+        return _read_state(dry.window_state())
+
     @property
     def title(self) -> str:
         """
         The window title.
+
+        Assignable while the Webview is running, and the window is retitled.
         """
         return self._title
 
     @title.setter
     def title(self, title: str) -> None:
+        if self._running:
+            dry.set_window_title(title)
         self._title = title
 
     @property
     def min_size(self) -> tuple[int, int]:
         """
         The minimum window dimensions, in logical pixels.
+
+        Assignable while the Webview is running. A minimum larger than the
+        window grows the window to meet it, on every platform Dry supports.
         """
         return self._min_size
 
     @min_size.setter
     def min_size(self, width_and_height: tuple[int, int]) -> None:
+        if self._running:
+            dry.set_window_min_size(width_and_height)
         self._min_size = width_and_height
 
     @property
     def size(self) -> tuple[int, int]:
         """
-        The initial window dimensions, in logical pixels.
+        The window dimensions, in logical pixels.
+
+        The size the window was built with until it is running, and what it
+        currently measures afterwards — including a size the user dragged it
+        to, because a property that reported only the last size Python asked
+        for would go stale the first time anybody touched the window.
+
+        Assigning it resizes the window, which reaches every listener of
+        `window:resized` exactly as a drag does.
         """
-        return self._size
+        reading = self._reading()
+        return self._size if reading is None else reading.size
 
     @size.setter
     def size(self, width_and_height: tuple[int, int]) -> None:
+        if self._running:
+            dry.set_window_size(width_and_height)
         self._size = width_and_height
 
     @property
     def decorations(self) -> bool:
         """
         Whether the native title bar and borders are shown.
+
+        Assignable while the Webview is running. The resize edges an
+        undecorated Webview draws over its own border are injected into the
+        page as it loads, so a window that opened decorated and was undecorated
+        afterwards has no resize edges until the Content is loaded again.
         """
         return self._decorations
 
     @decorations.setter
     def decorations(self, decorations: bool) -> None:
+        if self._running:
+            dry.set_window_decorations(decorations)
         self._decorations = decorations
 
     @property
     def icon_path(self) -> str | None:
         """
         The path to the window icon, if there is one.
+
+        Assignable while the Webview is running. `None` puts the platform's
+        default icon back, and an icon that cannot be read is logged rather
+        than raised, exactly as at construction.
         """
         return self._icon_path
 
     @icon_path.setter
     def icon_path(self, icon_path: StrPath | None) -> None:
-        self._icon_path = None if icon_path is None else Path(icon_path).as_posix()
+        resolved = None if icon_path is None else Path(icon_path).as_posix()
+        if self._running:
+            dry.set_window_icon(resolved)
+        self._icon_path = resolved
+
+    @property
+    def position(self) -> tuple[int, int]:
+        """
+        Where the window sits on the desktop, in logical pixels.
+
+        The outer position — the top-left corner of the window itself,
+        decorations included — measured the same way `window:moved` reports it.
+
+        Unlike `size`, there is no setting to fall back on: a window has no
+        position until the platform gives it one, so reading this before
+        `run()` raises rather than inventing a corner. Assigning it moves the
+        window, and a platform that refuses part of the move (macOS will not
+        lift a window above the menu bar) simply reports where the window
+        actually went.
+        """
+        self._require_running('position')
+        return self.state().position
+
+    @position.setter
+    def position(self, x_and_y: tuple[int, int]) -> None:
+        self._require_running('position')
+        dry.set_window_position(x_and_y)
+
+    @property
+    def visible(self) -> bool:
+        """
+        Whether the window is on screen.
+
+        Setting it to `False` takes the window off the screen without closing
+        it — no titlebar button, no dock entry, no close hook — and `True` puts
+        it back. The Webview goes on running either way: the event loop still
+        turns, the Bridge still carries Calls and Events, and the page keeps
+        its state. That is what makes a tray application possible, where
+        closing the window would end the process.
+
+        Hiding and showing reach `window:hidden` and `window:shown`, whoever
+        asked for it. A minimized window is minimized, not hidden: it is still
+        `visible`, because the user can still see it in the dock or the
+        taskbar and put it back.
+        """
+        self._require_running('visible')
+        return self.state().visible
+
+    @visible.setter
+    def visible(self, visible: bool) -> None:
+        self._require_running('visible')
+        dry.set_window_visible(visible)
+
+    @property
+    def maximized(self) -> bool:
+        """
+        Whether the window fills the screen it is on, keeping its decorations.
+
+        Assigning `False` restores the size the window had before it was
+        maximized. Reaches `window:maximized` and `window:unmaximized`.
+        """
+        self._require_running('maximized')
+        return self.state().maximized
+
+    @maximized.setter
+    def maximized(self, maximized: bool) -> None:
+        self._require_running('maximized')
+        dry.set_window_maximized(maximized)
+
+    @property
+    def minimized(self) -> bool:
+        """
+        Whether the window is minimized to the dock or the taskbar.
+
+        Assigning `False` restores it. Reaches `window:minimized` and
+        `window:restored`.
+        """
+        self._require_running('minimized')
+        return self.state().minimized
+
+    @minimized.setter
+    def minimized(self, minimized: bool) -> None:
+        self._require_running('minimized')
+        dry.set_window_minimized(minimized)
+
+    @property
+    def fullscreen(self) -> bool:
+        """
+        Whether the window has taken over the screen it is on.
+
+        Borderless fullscreen on the window's current monitor, which is the
+        one a desktop application wants — it does not change the display's
+        resolution under the user.
+
+        This is the one window state with no Event of its own: macOS reports
+        entering fullscreen as a resize and a move, so a name for it could not
+        be told from what the platform already sends. Read it here, or read
+        `state().fullscreen` alongside everything else.
+        """
+        self._require_running('fullscreen')
+        return self.state().fullscreen
+
+    @fullscreen.setter
+    def fullscreen(self, fullscreen: bool) -> None:
+        self._require_running('fullscreen')
+        dry.set_window_fullscreen(fullscreen)
 
     def _refuse_second_mode(self, mode: str) -> None:
         """

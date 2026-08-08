@@ -16,8 +16,9 @@ never came:
      `ready`
   2. `ready` maximizes the window; `window:maximized` unmaximizes it again
   3. `window:unmaximized` minimizes it; `window:minimized` restores it
-  4. `window:restored` asks the window to close, which the close hook refuses
-     the first time
+  4. `window:restored` takes the window off the screen; `window:hidden` puts it
+     back, and `window:shown` asks the window to close, which the close hook
+     refuses the first time
   5. `window:close-requested` reaches the page while the window is still there
      to hear it, and the page reports everything its listeners saw
   6. the report closes the window for real, and the close hook lets it go
@@ -60,9 +61,9 @@ BACKSTOP = 60.0
 # that closed itself from one that had to be shot.
 BACKSTOP_EXIT = 3
 
-# Every name Dry reserves for itself, less the two the round cannot produce:
-# `hidden` and `shown` need a way to take the window off the screen, which is
-# runtime window management and does not exist yet.
+# Every name Dry reserves for itself that this round produces. `hidden` and
+# `shown` come from `webview.visible`, the runtime visibility control: nothing
+# else can take a window off the screen without closing it.
 WATCHED = [
     'maximized',
     'unmaximized',
@@ -192,7 +193,21 @@ def main() -> int:
         step(f'minimized {value}', 'window.dry.minimize()')
 
     def restored(value: Any) -> None:
-        step(f'restored {value}', 'window.dry.close()')
+        # Off the screen without closing: no titlebar button, no close hook,
+        # and the page goes on running to hear about it.
+        step(f'restored {value}')
+        webview.visible = False
+
+    def hidden(value: Any) -> None:
+        step(f'hidden {value}')
+        # The same courtesy the maximize gets: the platform reports the state
+        # before it has finished the work, and a window put back the same
+        # instant it went is not a window anybody could have seen go.
+        time.sleep(SETTLE)
+        webview.visible = True
+
+    def shown(value: Any) -> None:
+        step(f'shown {value}', 'window.dry.close()')
 
     def resized(value: Any) -> None:
         # Not a step: a resize arrives several times over the round, and only
@@ -216,6 +231,8 @@ def main() -> int:
     _ = webview.on('window:unmaximized', unmaximized)
     _ = webview.on('window:minimized', minimized)
     _ = webview.on('window:restored', restored)
+    _ = webview.on('window:hidden', hidden)
+    _ = webview.on('window:shown', shown)
     _ = webview.on('window:resized', resized)
     _ = webview.on('window:moved', moved)
     _ = webview.on('window:close-requested', close_requested)
