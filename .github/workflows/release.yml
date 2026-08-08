@@ -1,12 +1,18 @@
 name: Release
 
 # Push a v-prefixed tag to cut a release. workflow_dispatch builds the same two
-# wheels and uploads them as artifacts without publishing, so the build can be
-# exercised on a branch without touching PyPI.
+# wheels without touching PyPI, and can optionally publish them to TestPyPI so
+# the publishing path itself can be exercised before a real release depends on
+# it. Only a tag ever reaches PyPI.
 on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      publish_to_testpypi:
+        description: 'Publish the built wheels to TestPyPI'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -104,6 +110,43 @@ jobs:
           name: wheel-${{ matrix.platform }}
           path: dist/*.whl
           if-no-files-found: error
+
+  publish-test:
+    # A dress rehearsal for the job below, on an index that does not matter.
+    # Same wheels, same OIDC exchange, same action — only the destination and
+    # the environment differ, so a mistake in any of them surfaces here rather
+    # than against the real index.
+    #
+    # One-time manual setup, on TestPyPI only:
+    #   1. https://test.pypi.org/manage/account/publishing/
+    #   2. Add a pending publisher: project "dry-webview",
+    #      owner "barradasotavio", repository "dry",
+    #      workflow "release.yml", environment "testpypi".
+    #
+    # TestPyPI refuses a version it has already seen, so a second rehearsal of
+    # the same version fails on upload. That is the index being strict, not the
+    # workflow being wrong.
+    name: Publish to TestPyPI
+    needs: wheels
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && inputs.publish_to_testpypi
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/dry-webview
+    permissions:
+      id-token: write
+    steps:
+      - name: Download the wheels
+        uses: actions/download-artifact@v8
+        with:
+          pattern: wheel-*
+          merge-multiple: true
+          path: dist
+
+      - name: Publish to TestPyPI
+        uses: pypa/gh-action-pypi-publish@v1.14.2
+        with:
+          repository-url: https://test.pypi.org/legacy/
 
   publish:
     # Trusted Publishing: PyPI mints a short-lived token from the OIDC identity
