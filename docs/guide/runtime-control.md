@@ -31,6 +31,12 @@ wv = Webview(
 wv.run()
 ```
 
+`open_settings` names `wv` above the line that creates it, which is fine:
+Python looks a global up when the function runs, not when it is defined, and a
+callback cannot run until `run()` has the window open. Calling `open_settings()`
+yourself in between is the only way to reach a name that is not there yet, and
+nothing in the Bridge does that.
+
 ## Settings that keep applying
 
 `title`, `size`, `min_size`, `decorations` and `icon_path` are constructor
