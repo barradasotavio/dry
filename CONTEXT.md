@@ -24,6 +24,10 @@ _Avoid_: Message, signal, notification, emit
 The mapping of names to Python callables the frontend may Call.
 _Avoid_: Handlers, bindings, exports
 
+**Portal**:
+Where Python code that Dry calls actually runs — an asyncio loop on a daemon thread beside a thread pool, off the thread drawing the window. Every Api callable and every Event listener crosses it, so they run concurrently and shared state is the developer's to make safe. See [ADR-0001](./docs/adr/0001-dry-owns-the-process-and-the-asyncio-loop.md).
+_Avoid_: Executor, dispatcher, worker, runtime
+
 **Content**:
 What the Webview renders. Exactly one of three explicit modes — an HTML string, a URL, or a Root.
 _Avoid_: Source, page
