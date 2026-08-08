@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.4.0 (unreleased)
+## 0.4.0
 
 A deliberately breaking release. Every break is covered, with what to do about
 it, in the [migration guide](https://barradasotavio.github.io/dry/migration-0.4.html).
@@ -87,6 +87,17 @@ it, in the [migration guide](https://barradasotavio.github.io/dry/migration-0.4.
   content type that is not a media type.
 - A window declared 800×600 opens at that apparent size on a display of any
   scale factor.
+
+### Known gaps
+
+- The window-size fix above was verified on macOS across a real scale change,
+  dragging between displays at `backingScaleFactor` 2.0 and 1.0. The scenario
+  originally reported — Windows at 100% and 150% — has not been reproduced,
+  because a CI runner has a single display at 100% where logical and physical
+  pixels are indistinguishable. Reports from Windows are welcome.
+- On macOS, resize edges are drawn by Dry rather than the platform, because
+  tao's `drag_resize_window` is unimplemented there. A window built decorated
+  and undecorated at runtime never draws them.
 
 ---
 
