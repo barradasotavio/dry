@@ -18,9 +18,10 @@ apart and only the level tells them apart:
   * `DEBUG dry.webview:` — the watchdog ran and Python reached the address
     anyway, so Dry declined to accuse it. A disagreement between the webview's
     network stack and Python's, not a suppressed report.
-  * neither — the watchdog returned early because the page-load handler called
-    the navigation an arrival. This is the WebView2 error-page case: the report
-    is suppressed and the blank window is silent again.
+  * neither — the watchdog never diagnosed anything, because it stood down on
+    the page-load handler calling the failure an arrival. This is the WebView2
+    error-page case: the report is suppressed and the blank window is silent
+    again.
 
 Usage: python navigation_window.py <journal-path> <url>
 """

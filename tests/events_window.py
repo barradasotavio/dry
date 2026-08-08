@@ -108,12 +108,19 @@ PAGE = f"""
 """
 
 
+# Two listeners for one Event run on two threads of the portal's pool, and both
+# write here. Appending is not atomic on Windows — `O_APPEND` there seeks to the
+# end and then writes, so two writers can land on the same offset and one line
+# is simply lost. That looked exactly like a listener that never ran.
+WRITING = threading.Lock()
+
+
 def journal(path: str, line: str) -> None:
     """
     Append one line and flush it. Nothing here survives buffering: the process
     is killed with `process::exit` when the window goes.
     """
-    with open(path, 'a', encoding='utf-8') as file:
+    with WRITING, open(path, 'a', encoding='utf-8') as file:
         file.write(f'{line}\n')
         file.flush()
         os.fsync(file.fileno())

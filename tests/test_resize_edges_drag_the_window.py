@@ -190,9 +190,12 @@ class ResizeEdgesDragTheWindow(unittest.TestCase):
         )
 
     @unittest.skipUnless(sys.platform == 'win32', 'Windows drags natively.')
-    def test_the_platform_moved_the_window_frame_itself(self):
-        # Measured through GetWindowRect rather than through the page, so this
-        # is the operating system's account of the window and not Dry's.
+    def test_the_platform_moved_the_window_itself(self):
+        # Measured through GetClientRect rather than through the page, so this
+        # is the operating system's account of the window and not Dry's, and
+        # the client area rather than the frame, because an undecorated tao
+        # window keeps a WS_THICKFRAME border some eight pixels wide that the
+        # page cannot see and a grab on it would resize without Dry's help.
         before = self.payload('native-before')
         after = self.payload('native-after')
         widened = (after[2] - after[0]) - (before[2] - before[0])
@@ -200,9 +203,9 @@ class ResizeEdgesDragTheWindow(unittest.TestCase):
             widened,
             GROWTH,
             delta=16,
-            msg=f'The native drag-resize loop moved the window frame by '
-            f'{widened} physical pixels, not by the {GROWTH} the cursor '
-            f'travelled.{self.context}',
+            msg=f'The native drag-resize loop moved the window by {widened} '
+            f'physical pixels, not by the {GROWTH} the cursor travelled.'
+            f'{self.context}',
         )
 
 

@@ -130,12 +130,19 @@ PAGE = f"""
 """
 
 
+# Events arrive on the portal's threads and the drag runs on one of its own, so
+# more than one writer reaches this. Appending is not atomic on Windows, where
+# `O_APPEND` seeks to the end and then writes, and two writers landing on the
+# same offset lose a line between them.
+WRITING = threading.Lock()
+
+
 def journal(path: str, line: str) -> None:
     """
     Append one line and flush it. Nothing here survives buffering: the process
     is killed with `process::exit` when the window goes.
     """
-    with open(path, 'a', encoding='utf-8') as file:
+    with WRITING, open(path, 'a', encoding='utf-8') as file:
         file.write(f'{line}\n')
         file.flush()
         os.fsync(file.fileno())
@@ -160,6 +167,13 @@ def inject_the_drag(path: str) -> None:
     DOM events cannot reach that loop, and neither can anything in the page:
     the button has to be genuinely down before `dry.resize()` is called, and
     genuinely up afterwards, or the loop never starts or never ends.
+
+    The press is aimed at the **client** rectangle, not the window rectangle.
+    An undecorated tao window still carries `WS_THICKFRAME`, so `GetWindowRect`
+    reports a frame some eight pixels wider on each side than anything the page
+    can see. A press two pixels inside *that* lands on the invisible border,
+    where Windows resizes the window all by itself and the page never hears a
+    thing — which looks exactly like a pass and proves nothing about Dry.
     """
     import ctypes
     from ctypes import wintypes
@@ -176,14 +190,31 @@ def inject_the_drag(path: str) -> None:
     user32.FindWindowW.argtypes = [wintypes.LPCWSTR, wintypes.LPCWSTR]
     user32.FindWindowW.restype = wintypes.HWND
     user32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(Rect)]
+    user32.GetClientRect.argtypes = [wintypes.HWND, ctypes.POINTER(Rect)]
+    user32.ClientToScreen.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.POINT)]
     user32.SetCursorPos.argtypes = [ctypes.c_int, ctypes.c_int]
 
     left_down, left_up = 0x0002, 0x0004
 
-    def rect_of(handle: int) -> tuple[int, int, int, int]:
+    def window_rect(handle: int) -> tuple[int, int, int, int]:
         rect = Rect()
         user32.GetWindowRect(handle, ctypes.byref(rect))
         return (rect.left, rect.top, rect.right, rect.bottom)
+
+    def client_rect(handle: int) -> tuple[int, int, int, int]:
+        """
+        The area the page occupies, in screen coordinates.
+        """
+        rect = Rect()
+        user32.GetClientRect(handle, ctypes.byref(rect))
+        origin = wintypes.POINT(0, 0)
+        user32.ClientToScreen(handle, ctypes.byref(origin))
+        return (
+            origin.x,
+            origin.y,
+            origin.x + rect.right,
+            origin.y + rect.bottom,
+        )
 
     handle = 0
     deadline = time.monotonic() + 20
@@ -196,9 +227,10 @@ def inject_the_drag(path: str) -> None:
         journal(path, 'native-missing []')
         return
 
-    before = rect_of(handle)
+    before = client_rect(handle)
     x, y = before[2] - 2, (before[1] + before[3]) // 2
     journal(path, f'native-before {json.dumps(before)}')
+    journal(path, f'native-frame {json.dumps(window_rect(handle))}')
     journal(path, f'native-grab {json.dumps([x, y])}')
 
     user32.SetForegroundWindow(handle)
@@ -219,7 +251,7 @@ def inject_the_drag(path: str) -> None:
     user32.mouse_event(left_up, 0, 0, 0, 0)
     time.sleep(0.6)
 
-    after = rect_of(handle)
+    after = client_rect(handle)
     journal(path, f'native-after {json.dumps(after)}')
 
 

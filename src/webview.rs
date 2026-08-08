@@ -130,6 +130,24 @@ const PROBED_SCHEMES: [&str; 3] = ["http://", "https://", "file://"];
 /// arrival, whatever the page-load handler calls it.
 const BLANK_PAGE: &str = "about:blank";
 
+/// Whether the page-load handler's account of an arrival can be believed.
+///
+/// On macOS it can. WKWebView commits `about:blank` when a navigation fails,
+/// so a Finished anywhere else really is a page, and the watchdog can stand
+/// down without asking the address anything.
+///
+/// On Windows it cannot, and this was measured: wry raises Finished from
+/// WebView2's `NavigationCompleted` without consulting the `IsSuccess` on that
+/// event, and the URL it reports is `Source()`, which still names the address
+/// that failed. WebView2 commits an error page of its own rather than a blank
+/// one, so **every** failed navigation there is indistinguishable from an
+/// arrival — a refused connection, an unresolvable host and an untrusted
+/// certificate alike, all of them silent. Windows therefore asks the address
+/// whatever the handler said. That costs a page that did load one extra
+/// request, five seconds in; it does not cost it a false report, because
+/// nothing is logged unless Python reproduces a concrete failure.
+const PAGE_LOAD_REPORTS_ARRIVAL: bool = cfg!(target_os = "macos");
+
 /// Watches one navigation, and only the first.
 ///
 /// wry has no failed-navigation hook. On macOS the failure reaches
@@ -160,7 +178,8 @@ fn watch_navigation(url: String, arrived: Arc<AtomicBool>) {
   thread::spawn(move || {
     thread::sleep(NAVIGATION_TIMEOUT);
 
-    if arrived.load(Ordering::Relaxed) {
+    let arrived = arrived.load(Ordering::Relaxed);
+    if PAGE_LOAD_REPORTS_ARRIVAL && arrived {
       return;
     }
 
@@ -169,13 +188,17 @@ fn watch_navigation(url: String, arrived: Arc<AtomicBool>) {
         logs::WEBVIEW,
         format!("The Webview could not load '{url}': {reason}"),
       ),
-      None => logs::debug(
+      // Reachable, and the page-load handler never said otherwise: the page is
+      // slow or empty, which is not worth accusing anybody of.
+      None if !arrived => logs::debug(
         logs::WEBVIEW,
         format!(
           "The Webview has not finished loading '{url}', but the address \
            answered when Dry asked. The page itself may be slow or empty."
         ),
       ),
+      // Reachable, and the page did load. Nothing happened.
+      None => {},
     }
   });
 }

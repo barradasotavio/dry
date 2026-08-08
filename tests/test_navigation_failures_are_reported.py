@@ -7,12 +7,15 @@ the failure to a delegate method wry does not implement — so Dry watches the
 navigation itself and, when nothing has arrived, asks the address what is wrong
 with Python's own `urllib`. The answer reaches the `dry.webview` logger.
 
-The detection turns on one measured fact: a failed navigation leaves the page
+The detection turned on one measured fact: a failed navigation leaves the page
 at `about:blank`, so a `Finished` at `about:blank` is not an arrival. That was
-measured on WKWebView only. **If WebView2 shows an error page of its own
-instead, `Finished` fires at a URL that is not blank, the watchdog calls the
-navigation an arrival and says nothing** — and the blank window is silent
-again, which is the entire bug.
+measured on WKWebView only, and it is false on WebView2 — this test found it
+false. WebView2 commits an error page of its own at the address that failed,
+wry raises `Finished` from `NavigationCompleted` without consulting its
+`IsSuccess`, and every one of the three failures below arrived at a URL that is
+not blank. All three were silent on Windows. `PAGE_LOAD_REPORTS_ARRIVAL` in
+src/webview.rs is the answer: only the webview that commits the blank page is
+believed, and the other asks the address whatever the handler said.
 
 So this runs on both platforms, against the three failures that read
 differently to a developer: a refused connection, an unresolvable host and a
@@ -34,9 +37,6 @@ from tempfile import TemporaryDirectory
 import tls_server
 
 CHILD = Path(__file__).parent / 'navigation_window.py'
-
-# The child's own number, kept in one place there.
-CAP_EXIT = 3
 
 # Generous: it covers the child's own hard cap, plus a webview starting cold.
 TIMEOUT = 180
@@ -60,9 +60,18 @@ class Run:
     @property
     def records(self) -> list[str]:
         """
-        The lines Dry itself wrote, in the order it wrote them.
+        What Dry said about *this* address, in the order it said it.
+
+        Matched on the URL because Dry has other things to say — it records the
+        window opening at debug — and a verdict on the navigation is the only
+        thing that names the address it is a verdict on.
         """
-        return [line for line in self.lines if ' dry.' in line.partition(':')[0]]
+        return [
+            line
+            for line in self.lines
+            if line.startswith(('ERROR dry.', 'DEBUG dry.', 'WARNING dry.'))
+            and self.url in line
+        ]
 
     @property
     def context(self) -> str:
@@ -146,34 +155,23 @@ class NavigationFailuresAreReported(unittest.TestCase):
         errors = [line for line in run.records if line.startswith('ERROR dry.webview:')]
 
         if not errors:
-            debug = [
-                line for line in run.records if line.startswith('DEBUG dry.webview:')
-            ]
-            if debug:
+            if run.records:
                 self.fail(
                     'The navigation was diagnosed, but Dry reached the address '
-                    'and declined to accuse it. The webview and Python disagree '
-                    f'about this address.{run.context}'
+                    'and declined to accuse it. The webview and Python '
+                    f'disagree about this address.{run.context}'
                 )
-            self.assertNotEqual(
-                run.returncode,
-                CAP_EXIT,
-                'Dry said nothing at all about a navigation that could not '
-                'have arrived, so the page-load handler called it an arrival. '
-                'The webview committed a page of its own — an error page — and '
-                f'the failure report is suppressed.{run.context}',
-            )
             self.fail(
-                f'The child left no report and did not reach its cap.{run.context}'
+                'Dry said nothing at all about a navigation that could not '
+                'have arrived, so the watchdog stood down: the page-load '
+                'handler called the failure an arrival. The webview committed '
+                'a page of its own — an error page — and the failure report is '
+                f'suppressed.{run.context}'
             )
 
         self.assertTrue(
             any(reason in line for line in errors),
             f"Dry reported the failure but not as '{reason}'.{run.context}",
-        )
-        self.assertTrue(
-            any(run.url in line for line in errors),
-            f'The report does not name the address it is about.{run.context}',
         )
 
     def test_a_refused_connection_is_reported(self):
